@@ -26,10 +26,9 @@
 #include "glm/gtc/matrix_transform.hpp"
 #include "glm/gtc/type_ptr.hpp"
 
+
 #include "helper_glsl.h"
 #include "trackball.h"
-
-int pause = 0;
 
 GLFWwindow *window;
 GLint windowWidth = 1200;
@@ -296,9 +295,6 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
 {
   if (key == GLFW_KEY_ESCAPE && action == GLFW_RELEASE)
     glfwSetWindowShouldClose(window, GL_TRUE);
-  if (key == GLFW_KEY_P && action == GLFW_RELEASE) {
-    pause = 0;
-  }
 }
 
 static void cursor_pos_callback(GLFWwindow* window, double x, double y)
@@ -505,11 +501,6 @@ void display()
   glUseProgram(program);
 
   transform();
-
-  if (!pause) {
-    updateParticles();
-    // pause = 1;
-  }
 
   glBindVertexArray(vao);
   glDrawElements(GL_LINES, 24, GL_UNSIGNED_INT, (void*)0);
