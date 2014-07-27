@@ -37,6 +37,7 @@ GLint windowHeight = 800;
 GLfloat curquat[4];
 GLfloat lastquat[4];
 
+
 GLfloat modelTranslation[3] = { 0.0f, 0.0f, -3.5f };
 
 double mousePosX;
