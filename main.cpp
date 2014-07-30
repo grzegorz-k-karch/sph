@@ -58,7 +58,7 @@ int numIndicesSphere;
 
 GLuint vboPositions = 0;
 
-int numParticles = 2000;
+int numParticles = 3000;
 float *particles = 0;
 float *velocities = 0;
 // float k = 8.3144621f; // gas constant; here I simulate liquid
