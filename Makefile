@@ -1,8 +1,9 @@
 CXX = g++
-CXXFLAGS = -std=c++11
+CXXFLAGS = -std=c++11 -fopenmp
 
-INCLUDES = -Irender
-LIBRARIES = -lglfw -lGL -lGLEW
+INCLUDES = -Irender -I.
+LIBDIRS = -Lrender/GLFW
+LIBRARIES = -lglfw3 -lGL -lGLEW -lX11 -lXrandr -lXi -lXxf86vm
 
 BIN = sph
 
@@ -12,17 +13,17 @@ all: $(BIN)
 debug: CXX += -DDEBUG -g
 debug: $(BIN)
 
-release: CXX += -O3 -fopenmp
+release: CXX += -O3
 release: $(BIN)
 
 main.o: main.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ -c $<
 helper_glsl.o: render/helper_glsl.cpp
-	$(CXX) $(CXXFLAGS) -o $@ -c $<
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ -c $<
 trackball.o: render/trackball.cpp
 	$(CXX) $(CXXFLAGS) -o $@ -c $<
 $(BIN): main.o helper_glsl.o trackball.o
-	$(CXX) $(CXXFLAGS) $^ $(LIBRARIES) -o $@
+	$(CXX) $(CXXFLAGS) $^ $(LIBDIRS) $(LIBRARIES) -o $@
 
 .PHONY: clean
 clean:
