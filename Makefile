@@ -12,7 +12,7 @@ all: $(BIN)
 debug: CXX += -DDEBUG -g
 debug: $(BIN)
 
-release: CXX += -O3
+release: CXX += -O3 -fopenmp
 release: $(BIN)
 
 main.o: main.cpp
@@ -26,4 +26,4 @@ $(BIN): main.o helper_glsl.o trackball.o
 
 .PHONY: clean
 clean:
-	rm  *.o *~ $(BIN)
+	rm -f *.o *~ $(BIN)

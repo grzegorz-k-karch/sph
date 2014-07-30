@@ -17,6 +17,8 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
+#include <omp.h>
+#include <vector>
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -25,7 +27,6 @@
 #include "glm/core/type_vec3.hpp"
 #include "glm/gtc/matrix_transform.hpp"
 #include "glm/gtc/type_ptr.hpp"
-
 
 #include "helper_glsl.h"
 #include "trackball.h"
@@ -48,21 +49,28 @@ GLuint vaoParticles = 0;
 GLuint vboParticles = 0;
 GLuint program;
 
-int numParticles = 1500;
+GLuint vaoSphere = 0;
+GLuint vboSphereVertex = 0;
+GLuint vboSphereNormal = 0;
+GLuint vboSphereIndex = 0;
+int numIndicesSphere;
+
+GLuint vboPositions = 0;
+
+int numParticles = 5000;
 float *particles = 0;
 float *velocities = 0;
 // float k = 8.3144621f; // gas constant; here I simulate liquid
-float rho0 = 600.0f;//FROM FLUIDS//1000.0f; // [kg/m^3] - water
-float dynVisc = 0.2f;//FROM FLUIDS//0.001f; // [kg/m/s]  (0.00089 [Pa*s]  - dynamic viscosity of water)
+float rho0 = 600.0f;//FROM FLUIDS// 1000.0f; // [kg/m^3] - water
+float dynVisc = 0.2f;//FROM FLUIDS// [kg/m/s]  (0.00089 [Pa*s]  - dynamic viscosity of water)
 float soundSpeed = 1.0f; // should be 1500 [m/s] for water
-float surfTension = 0.0000001197f;// surface tension coefficient of water against air
-// at 25 degrees Celcius [dyn/cm] = 0.001 [N/m]
+float surfTension = 0.0000001197f;// surface tension coefficient of water against air at 25 degrees Celcius [dyn/cm] = 0.001 [N/m]
 float tankSize = 0.2154f; // [m] side of a cube container with 10 liter of water
 
 float a_gravity[3] = {0.0f, -10.0f, 0.0f};
 float timestep = 0.005f; // 0.0001 [s] for speed of sound in water = 1500 [m/s]
-float m = 0.00020543f;//FROM FLUIDS//0.01f; //0.01 [m] for 1000 particles in 10L water with sound speed = 1500
-float h = 0.01f;//FROM FLUIDS//0.058f; // 0.05848 [m] is the side of cube with average 20 particles if 1000 particles are in 10 liters of water
+float m = 0.00020543f;//FROM FLUIDS// 0.01 [m] for 1000 particles in 10L water with sound speed = 1500
+float h = 0.01f;//FROM FLUIDS// 0.05848 [m] is the side of cube with average 20 particles if 1000 particles are in 10 liters of water
 float h9 = 0.0f;
 float h2 = 0.0f;
 float h6 = 0.0f;
@@ -129,6 +137,7 @@ void updateParticles()
   float *densities = (float*)malloc(numParticles*sizeof(float));
 
   // compute density for each particle-----------------------------------------
+#pragma omp parallel for
   for (int i = 0; i < numParticles; i++) {
 
     float rho = 0;
@@ -153,7 +162,7 @@ void updateParticles()
 
   // pressure-----------------------------------------------------------------
   float c = soundSpeed*soundSpeed;
-
+#pragma omp parallel for
   for (int i = 0; i < numParticles; i++) {
 
     float *ri = &particles[i*3];
@@ -186,6 +195,7 @@ void updateParticles()
   }
 
   // visocity------------------------------------------------------------------
+#pragma omp parallel for
   for (int i = 0; i < numParticles; i++) {
 
     float *ri = &particles[i*3];
@@ -217,6 +227,7 @@ void updateParticles()
   }
 
   // gravity-------------------------------------------------------------------
+#pragma omp parallel for
   for (int i = 0; i < numParticles; i++) {
 
     f_total[i*3+0] += a_gravity[0]*densities[i];
@@ -224,6 +235,7 @@ void updateParticles()
     f_total[i*3+2] += a_gravity[2]*densities[i];    
   }
 
+#pragma omp parallel for
   for (int i = 0; i < numParticles; i++) {
 
     float *particle = &particles[i*3];
@@ -243,11 +255,12 @@ void updateParticles()
   free(densities);
   free(f_total);
 
+#pragma omp parallel for
   for (int i = 0; i < numParticles; i++) {
 
     float *particle = &particles[i*3];
     float *velocity = &velocities[i*3];
-    float damping = 0.8f;
+    float damping = 1.0f;
 
     if (particle[0] < 0.0f) {
       particle[0] = 0.0f;
@@ -369,51 +382,97 @@ void initParticles()
   glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (GLubyte*)NULL);
 }
 
-void drawSphere(float center[3], float radius, int voffset,
-		float* vertices, unsigned int* indices, float* normals)
+void createSphere(float radius,
+		  std::vector<float>& vertices, 
+		  std::vector<unsigned int>& indices, 
+		  std::vector<float>& normals)
 {
   int stacks = 16;
   int slices = 16;
 
-  int idx = 0;
   for(int i = 0; i <= stacks; i++) {
+
     float lat0 = M_PI * (-0.5 + (float) (i) / stacks);
     float z0  = sin(lat0)*radius;
     float zr0 =  cos(lat0);
           
     for(int j = 0; j < slices; j++) {
+
       float lng = 2 * M_PI * (float) (j - 1) / slices;
       float x = cos(lng)*radius;
       float y = sin(lng)*radius;
-      float v[4] = {center[0] + x*zr0, 
-		    center[1] + y*zr0, 
-		    center[2] + z0, 1.0f};
+      float v[4] = {x*zr0, y*zr0, z0, 1.0f};
+      vertices.push_back(v[0]);
+      vertices.push_back(v[1]);
+      vertices.push_back(v[2]);
+      vertices.push_back(v[3]);
+
       float n3[3] = {x * zr0, y * zr0, z0};
       vecNormalize(n3,n3);
-      vertices[idx+0] = v[0];
-      vertices[idx+1] = v[1];
-      vertices[idx+2] = v[2];
-      vertices[idx+3] = v[3];
-      normals[idx+0] = n3[0];
-      normals[idx+1] = n3[1];
-      normals[idx+2] = n3[2];
-      normals[idx+3] = 0.0f;;
-      idx += 4;
+      normals.push_back(n3[0]);
+      normals.push_back(n3[1]);
+      normals.push_back(n3[2]);
+      normals.push_back(0.0f);
     }
   }
-  idx = 0;
   for (int i = 0; i < stacks; i++) {
     for (int j = 0; j < slices; j++) {
 
-      indices[idx++] = i*slices+voffset+j;		   
-      indices[idx++] = i*slices+voffset+((j+1)%slices);	   
-      indices[idx++] = (i+1)*slices+voffset+((j+1)%slices);
-      indices[idx++] = (i+1)*slices+voffset+((j+1)%slices);
-      indices[idx++] = (i+1)*slices+voffset+j;
-      indices[idx++] = i*slices+voffset+j;
+      indices.push_back(i*slices+j);		   
+      indices.push_back(i*slices+((j+1)%slices));	   
+      indices.push_back((i+1)*slices+((j+1)%slices));
+      indices.push_back((i+1)*slices+((j+1)%slices));
+      indices.push_back((i+1)*slices+j);
+      indices.push_back(i*slices+j);
     }
   }
 }
+
+// void createSphere(float center[3], float radius, int voffset,
+// 		  float* vertices, unsigned int* indices, float* normals)
+// {
+//   int stacks = 16;
+//   int slices = 16;
+
+//   int idx = 0;
+//   for(int i = 0; i <= stacks; i++) {
+//     float lat0 = M_PI * (-0.5 + (float) (i) / stacks);
+//     float z0  = sin(lat0)*radius;
+//     float zr0 =  cos(lat0);
+          
+//     for(int j = 0; j < slices; j++) {
+//       float lng = 2 * M_PI * (float) (j - 1) / slices;
+//       float x = cos(lng)*radius;
+//       float y = sin(lng)*radius;
+//       float v[4] = {center[0] + x*zr0, 
+// 		    center[1] + y*zr0, 
+// 		    center[2] + z0, 1.0f};
+//       float n3[3] = {x * zr0, y * zr0, z0};
+//       vecNormalize(n3,n3);
+//       vertices[idx+0] = v[0];
+//       vertices[idx+1] = v[1];
+//       vertices[idx+2] = v[2];
+//       vertices[idx+3] = v[3];
+//       normals[idx+0] = n3[0];
+//       normals[idx+1] = n3[1];
+//       normals[idx+2] = n3[2];
+//       normals[idx+3] = 0.0f;;
+//       idx += 4;
+//     }
+//   }
+//   idx = 0;
+//   for (int i = 0; i < stacks; i++) {
+//     for (int j = 0; j < slices; j++) {
+
+//       indices[idx++] = i*slices+voffset+j;		   
+//       indices[idx++] = i*slices+voffset+((j+1)%slices);	   
+//       indices[idx++] = (i+1)*slices+voffset+((j+1)%slices);
+//       indices[idx++] = (i+1)*slices+voffset+((j+1)%slices);
+//       indices[idx++] = (i+1)*slices+voffset+j;
+//       indices[idx++] = i*slices+voffset+j;
+//     }
+//   }
+// }
 
 
 void transform()
@@ -458,7 +517,6 @@ void initGeometry()
   glBindBuffer(GL_ARRAY_BUFFER, vbo);
   glBufferData(GL_ARRAY_BUFFER, 24*sizeof(float), vertices, GL_STATIC_DRAW);
 
-
   unsigned int indices[] = {
     0,1,
     0,2,
@@ -485,6 +543,51 @@ void initGeometry()
   glBindBuffer(GL_ARRAY_BUFFER, vbo);
   glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (GLubyte*)NULL);
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
+
+  // sphere for instancing
+
+  float radius = 0.01f;
+  std::vector<float> Vertices;
+  std::vector<float> Normals;  
+  std::vector<unsigned int> Indices;
+  
+  Vertices.clear();
+  Normals.clear();
+  Indices.clear();
+  createSphere(radius, Vertices, Indices, Normals);
+  
+  glGenVertexArrays(1, &vaoSphere);
+  glBindVertexArray(vaoSphere);
+
+  glGenBuffers(1, &vboSphereVertex);
+  glBindBuffer(GL_ARRAY_BUFFER, vboSphereVertex);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(float)*Vertices.size(), Vertices.data(), 
+	       GL_STATIC_DRAW);
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 0, (GLubyte*)NULL);
+
+  glGenBuffers(1, &vboSphereNormal);
+  glBindBuffer(GL_ARRAY_BUFFER, vboSphereNormal);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(float)*Normals.size(), Normals.data(), 
+	       GL_STATIC_DRAW);
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 0, (GLubyte*)NULL);
+
+  glGenBuffers(1, &vboSphereIndex);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vboSphereIndex);
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int)*Indices.size(), 
+	       Indices.data(), GL_STATIC_DRAW);
+
+  numIndicesSphere = Indices.size();
+
+  glGenBuffers(1, &vboPositions);
+  glBindBuffer(GL_ARRAY_BUFFER, vboPositions);
+
+  glEnableVertexAttribArray(2);
+  glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(float)*4, (GLubyte*)NULL);
+  glVertexAttribDivisor(2, 1);
+
+  glBindVertexArray(0);
 }
 
 unsigned int initShaderProgram()
@@ -503,12 +606,24 @@ void display()
 
   transform();
 
+  clock_t t = clock();
+
+  updateParticles();
+
+  t = clock() - t;
+  std::cout << "elapsed time: " << float(t)/CLOCKS_PER_SEC << "s" << std::endl;
+
   glBindVertexArray(vao);
   glDrawElements(GL_LINES, 24, GL_UNSIGNED_INT, (void*)0);
 
   glBindVertexArray(vaoParticles);
   glPointSize(5.0f);
   glDrawArrays(GL_POINTS, 0, numParticles);
+
+  glBindVertexArray(vaoSphere);
+  glBindBuffer(GL_ARRAY_BUFFER, vboPositions);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(float)*numParticles*3, particles, GL_DYNAMIC_DRAW);
+  glDrawElementsInstanced(GL_TRIANGLES, numIndicesSphere, GL_UNSIGNED_INT, 0, numParticles);
 
   glfwPollEvents();
 
@@ -552,9 +667,19 @@ void initOpenGL()
 
   glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
 }
+//from http://stackoverflow.com/questions/11071116/i-got-omp-get-num-threads-always-return-1-in-gcc-works-in-icc
+int omp_thread_count() 
+{
+  int n = 0;
+#pragma omp parallel reduction(+:n)
+  n += 1;
+  return n;
+}
 
 int main()
 {
+  std::cout << omp_thread_count() << ", " << omp_get_num_threads() << std::endl;
+
   h2 = h*h;
   h6 = h2*h2*h2;
   h9 = h*h2*h6;
