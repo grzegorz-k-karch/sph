@@ -1,7 +1,7 @@
 CXX = g++
 CXXFLAGS = -std=c++11 -fopenmp
 
-INCLUDES = -Irender -I.
+INCLUDES = -Irender -I. -Icompute
 LIBDIRS = -Lrender/GLFW
 LIBRARIES = -lglfw3 -lGL -lGLEW -lX11 -lXrandr -lXi -lXxf86vm
 
@@ -22,7 +22,9 @@ helper_glsl.o: render/helper_glsl.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ -c $<
 trackball.o: render/trackball.cpp
 	$(CXX) $(CXXFLAGS) -o $@ -c $<
-$(BIN): main.o helper_glsl.o trackball.o
+compute.o: compute/compute.cpp
+	$(CXX) $(CXXFLAGS) -o $@ -c $<
+$(BIN): main.o helper_glsl.o trackball.o compute.o
 	$(CXX) $(CXXFLAGS) $^ $(LIBDIRS) $(LIBRARIES) -o $@
 
 .PHONY: clean
