@@ -57,7 +57,7 @@ int numIndicesSphere;
 
 GLuint vboPositions = 0;
 
-int numParticles = 5000;
+int numParticles = 1500;
 float *particles = 0;
 float *velocities = 0;
 // float k = 8.3144621f; // gas constant; here I simulate liquid
@@ -215,6 +215,7 @@ void updateParticles()
       fviscosity[0] += dynVisc*m*vdiff[0]/densities[j]*laplWviscosity(magr);
       fviscosity[1] += dynVisc*m*vdiff[1]/densities[j]*laplWviscosity(magr);
       fviscosity[2] += dynVisc*m*vdiff[2]/densities[j]*laplWviscosity(magr);
+
       // // FROM FLUIDS
       // fviscosity[0] += dynVisc*m*vdiff[0]/(densities[i]*densities[j])*laplWviscosity(magr);
       // fviscosity[1] += dynVisc*m*vdiff[1]/(densities[i]*densities[j])*laplWviscosity(magr);
@@ -370,16 +371,6 @@ void initParticles()
     velocities[i*3+1] = 0.0f;
     velocities[i*3+2] = 0.0f;
   }
-
-  glGenBuffers(1, &vboParticles);
-  glBindBuffer(GL_ARRAY_BUFFER, vboParticles);
-  glBufferData(GL_ARRAY_BUFFER, numParticles*3*sizeof(float), particles, GL_STATIC_DRAW);
-
-  glGenVertexArrays(1, &vaoParticles);
-  glBindVertexArray(vaoParticles);
-  glEnableVertexAttribArray(0);
-  glBindBuffer(GL_ARRAY_BUFFER, vboParticles);
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (GLubyte*)NULL);
 }
 
 void createSphere(float radius,
@@ -428,52 +419,6 @@ void createSphere(float radius,
   }
 }
 
-// void createSphere(float center[3], float radius, int voffset,
-// 		  float* vertices, unsigned int* indices, float* normals)
-// {
-//   int stacks = 16;
-//   int slices = 16;
-
-//   int idx = 0;
-//   for(int i = 0; i <= stacks; i++) {
-//     float lat0 = M_PI * (-0.5 + (float) (i) / stacks);
-//     float z0  = sin(lat0)*radius;
-//     float zr0 =  cos(lat0);
-          
-//     for(int j = 0; j < slices; j++) {
-//       float lng = 2 * M_PI * (float) (j - 1) / slices;
-//       float x = cos(lng)*radius;
-//       float y = sin(lng)*radius;
-//       float v[4] = {center[0] + x*zr0, 
-// 		    center[1] + y*zr0, 
-// 		    center[2] + z0, 1.0f};
-//       float n3[3] = {x * zr0, y * zr0, z0};
-//       vecNormalize(n3,n3);
-//       vertices[idx+0] = v[0];
-//       vertices[idx+1] = v[1];
-//       vertices[idx+2] = v[2];
-//       vertices[idx+3] = v[3];
-//       normals[idx+0] = n3[0];
-//       normals[idx+1] = n3[1];
-//       normals[idx+2] = n3[2];
-//       normals[idx+3] = 0.0f;;
-//       idx += 4;
-//     }
-//   }
-//   idx = 0;
-//   for (int i = 0; i < stacks; i++) {
-//     for (int j = 0; j < slices; j++) {
-
-//       indices[idx++] = i*slices+voffset+j;		   
-//       indices[idx++] = i*slices+voffset+((j+1)%slices);	   
-//       indices[idx++] = (i+1)*slices+voffset+((j+1)%slices);
-//       indices[idx++] = (i+1)*slices+voffset+((j+1)%slices);
-//       indices[idx++] = (i+1)*slices+voffset+j;
-//       indices[idx++] = i*slices+voffset+j;
-//     }
-//   }
-// }
-
 
 void transform()
 {
@@ -482,12 +427,15 @@ void transform()
   float fov = 45;
   float aspect = (float)windowWidth / (float)windowHeight;
   glm::mat4 projMX, modelMX, viewMX;
+  glm::mat4 modelInvTranspMX;
 
   projMX = glm::perspective(fov, aspect, fnear, ffar);
   viewMX = glm::mat4(1.0f);
   modelMX = glm::translate(glm::mat4(1.0f), glm::vec3(modelTranslation[0],
 						      modelTranslation[1], 
 						      modelTranslation[2]));
+  modelInvTranspMX = glm::transpose(glm::inverse(modelMX));
+
   glm::mat4 m;
   build_rotmatrix(m, curquat);
   modelMX = glm::mat4(modelMX*m);
@@ -498,6 +446,8 @@ void transform()
 		     1, GL_FALSE, glm::value_ptr(viewMX));
   glUniformMatrix4fv(glGetUniformLocation(program, "proj_mat"),
 		     1, GL_FALSE, glm::value_ptr(projMX));
+  glUniformMatrix4fv(glGetUniformLocation(program, "model_it_mat"),
+		     1, GL_FALSE, glm::value_ptr(modelInvTranspMX));
 }
 
 void initGeometry()
@@ -546,7 +496,7 @@ void initGeometry()
 
   // sphere for instancing
 
-  float radius = 0.01f;
+  float radius = 0.0025f;
   std::vector<float> Vertices;
   std::vector<float> Normals;  
   std::vector<unsigned int> Indices;
@@ -584,7 +534,7 @@ void initGeometry()
   glBindBuffer(GL_ARRAY_BUFFER, vboPositions);
 
   glEnableVertexAttribArray(2);
-  glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(float)*4, (GLubyte*)NULL);
+  glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(float)*3, (GLubyte*)NULL);
   glVertexAttribDivisor(2, 1);
 
   glBindVertexArray(0);
@@ -592,7 +542,7 @@ void initGeometry()
 
 unsigned int initShaderProgram()
 {
-  const GLchar *vertexShader[1] = { "./render/shaders/vs_simple.glsl" };
+  const GLchar *vertexShader[1] = { "./render/shaders/vs_basic.glsl" };
   const GLchar *fragmentShader[1] = { "./render/shaders/fs_simple.glsl" };
   GLuint sp = buildGLSLProgram(vertexShader, 1, fragmentShader, 1);
 
@@ -612,13 +562,6 @@ void display()
 
   t = clock() - t;
   std::cout << "elapsed time: " << float(t)/CLOCKS_PER_SEC << "s" << std::endl;
-
-  glBindVertexArray(vao);
-  glDrawElements(GL_LINES, 24, GL_UNSIGNED_INT, (void*)0);
-
-  glBindVertexArray(vaoParticles);
-  glPointSize(5.0f);
-  glDrawArrays(GL_POINTS, 0, numParticles);
 
   glBindVertexArray(vaoSphere);
   glBindBuffer(GL_ARRAY_BUFFER, vboPositions);
@@ -678,7 +621,7 @@ int omp_thread_count()
 
 int main()
 {
-  std::cout << omp_thread_count() << ", " << omp_get_num_threads() << std::endl;
+  // std::cout << omp_thread_count() << ", " << omp_get_num_threads() << std::endl;
 
   h2 = h*h;
   h6 = h2*h2*h2;
