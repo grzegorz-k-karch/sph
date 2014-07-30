@@ -1,15 +1,18 @@
 /*
- * based on http://antongerdelan.net/opengl/hellotriangle.html
- * and http://www.opengl-tutorial.org/beginners-tutorials/tutorial-2-the-first-triangle/
+ * graphics based on 
+ * http://antongerdelan.net/opengl/hellotriangle.html
+ * http://www.opengl-tutorial.org/beginners-tutorials/tutorial-2-the-first-triangle/
  */
 /*
- * parameters taken from
+ * fluid parameters taken from
  * https://www8.cs.umu.se/kurser/5DV058/VT10/lectures/sphsurvivalkit.pdf
  * https://www8.cs.umu.se/kurser/5DV058/VT10/lectures/Lecture8.pdf
+ *
  * parameters adjusted according to the fluids_v1 program:
  * http://www.rchoetzlein.com/eng/graphics/fluids.htm
  */
 /*
+ * further materials:
  * https://www.youtube.com/watch?v=SQPCXzqH610
  */
 #include <stdio.h>
@@ -57,7 +60,7 @@ int numIndicesSphere;
 
 GLuint vboPositions = 0;
 
-int numParticles = 1500;
+int numParticles = 2000;
 float *particles = 0;
 float *velocities = 0;
 // float k = 8.3144621f; // gas constant; here I simulate liquid
@@ -132,12 +135,11 @@ void updateParticles()
     f_total[i] = 0.0f;
   }
 
-
   float avgDensity = 0.0f;
   float *densities = (float*)malloc(numParticles*sizeof(float));
 
   // compute density for each particle-----------------------------------------
-#pragma omp parallel for
+#pragma omp parallel for reduction(+:avgDensity)
   for (int i = 0; i < numParticles; i++) {
 
     float rho = 0;
@@ -378,8 +380,8 @@ void createSphere(float radius,
 		  std::vector<unsigned int>& indices, 
 		  std::vector<float>& normals)
 {
-  int stacks = 16;
-  int slices = 16;
+  int stacks = 64;
+  int slices = 64;
 
   for(int i = 0; i <= stacks; i++) {
 
