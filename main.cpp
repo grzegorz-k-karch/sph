@@ -1,20 +1,3 @@
-/*
- * graphics based on 
- * http://antongerdelan.net/opengl/hellotriangle.html
- * http://www.opengl-tutorial.org/beginners-tutorials/tutorial-2-the-first-triangle/
- */
-/*
- * fluid parameters taken from
- * https://www8.cs.umu.se/kurser/5DV058/VT10/lectures/sphsurvivalkit.pdf
- * https://www8.cs.umu.se/kurser/5DV058/VT10/lectures/Lecture8.pdf
- *
- * parameters adjusted according to the fluids_v1 program:
- * http://www.rchoetzlein.com/eng/graphics/fluids.htm
- */
-/*
- * further materials:
- * https://www.youtube.com/watch?v=SQPCXzqH610
- */
 #include <iostream>
 
 #include <omp.h>
@@ -58,14 +41,11 @@ int numIndicesSphere;
 
 GLuint vboPositions = 0;
 
-int numParticles = 3000;
+int numParticles = 2000;
 float *particles = 0;
 float *velocities = 0;
-// float k = 8.3144621f; // gas constant; here I simulate liquid
 
 extern float tankSize;
-
-float surfTension = 0.0000001197f;// surface tension coefficient of water against air at 25 degrees Celcius [dyn/cm] = 0.001 [N/m]
 
 void error_callback(int error, const char* description)
 {
@@ -310,15 +290,8 @@ void display()
 
   transform();
 
-  clock_t t = clock();
-
-  updateParticles(particles, velocities, numParticles);
-
   glBindBuffer(GL_ARRAY_BUFFER, vboParticles);
   glBufferData(GL_ARRAY_BUFFER, numParticles*3*sizeof(float), particles, GL_STATIC_DRAW);
-
-  t = clock() - t;
-  std::cout << "elapsed time: " << float(t)/CLOCKS_PER_SEC << "s" << std::endl;
 
   glBindVertexArray(vaoSphere);
   glBindBuffer(GL_ARRAY_BUFFER, vboPositions);
@@ -390,6 +363,12 @@ int main()
   program = initShaderProgram();
 
   while (!glfwWindowShouldClose(window)) {
+
+    clock_t t = clock();    
+    updateParticles(particles, velocities, numParticles);
+    t = clock() - t;
+    std::cout << "elapsed time: " << float(t)/CLOCKS_PER_SEC << "s" << std::endl;
+
     display();
   }
 

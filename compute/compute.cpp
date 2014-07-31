@@ -5,15 +5,15 @@
 
 #include "compute.h"
 
-float soundSpeed = 1.0f; // should be 1500 [m/s] for water
-float m = 0.00020543f;//FROM FLUIDS// 0.01 [m] for 1000 particles in 10L water with sound speed = 1500
-float rho0 = 600.0f;//FROM FLUIDS// 1000.0f; // [kg/m^3] - water
-float dynVisc = 0.2f;//FROM FLUIDS// [kg/m/s]  (0.00089 [Pa*s]  - dynamic viscosity of water)
+float soundSpeed = 1.0f;
+float m = 0.00020543f;
+float rho0 = 600.0f;
+float dynVisc = 0.2f;
 float a_gravity[3] = {0.0f, -10.0f, 0.0f};
-float timestep = 0.005f; // 0.0001 [s] for speed of sound in water = 1500 [m/s]
-float tankSize = 0.2154f; // [m] side of a cube container with 10 liter of water
+float timestep = 0.005f;
+float tankSize = 0.2154f;
 
-float h = 0.01f;//FROM FLUIDS// 0.05848 [m] is the side of cube with average 20 particles if 1000 particles are in 10 liters of water
+float h = 0.01f;
 float h9 = 0.0f;
 float h2 = 0.0f;
 float h6 = 0.0f;
@@ -182,11 +182,6 @@ void updateParticles(float* particles, float* velocities, int numParticles)
       fviscosity[0] += dynVisc*m*vdiff[0]/densities[j]*laplWviscosity(magr);
       fviscosity[1] += dynVisc*m*vdiff[1]/densities[j]*laplWviscosity(magr);
       fviscosity[2] += dynVisc*m*vdiff[2]/densities[j]*laplWviscosity(magr);
-
-      // // FROM FLUIDS
-      // fviscosity[0] += dynVisc*m*vdiff[0]/(densities[i]*densities[j])*laplWviscosity(magr);
-      // fviscosity[1] += dynVisc*m*vdiff[1]/(densities[i]*densities[j])*laplWviscosity(magr);
-      // fviscosity[2] += dynVisc*m*vdiff[2]/(densities[i]*densities[j])*laplWviscosity(magr);
     }
     
     f_total[i*3+0] += fviscosity[0];
