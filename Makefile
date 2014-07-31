@@ -10,10 +10,10 @@ BIN = sph
 .PHONY: all
 all: $(BIN)
 
-debug: CXX += -DDEBUG -g
+debug: CXXFLAGS += -DDEBUG -g
 debug: $(BIN)
 
-release: CXX += -O3
+release: CXXFLAGS += -O3
 release: $(BIN)
 
 main.o: main.cpp
@@ -24,7 +24,9 @@ trackball.o: render/trackball.cpp
 	$(CXX) $(CXXFLAGS) -o $@ -c $<
 compute.o: compute/compute.cpp
 	$(CXX) $(CXXFLAGS) -o $@ -c $<
-$(BIN): main.o helper_glsl.o trackball.o compute.o
+render.o: render/render.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ -c $<
+$(BIN): main.o helper_glsl.o trackball.o compute.o render.o
 	$(CXX) $(CXXFLAGS) $^ $(LIBDIRS) $(LIBRARIES) -o $@
 
 .PHONY: clean
