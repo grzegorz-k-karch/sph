@@ -95,7 +95,7 @@ float laplWpoly6(const float r)
 }
 
 void initParticles(float** particles, float** velocities, 
-		   int numParticles, float scale[3], float offset[3])
+		   int numParticles)
 {
   h2 = h*h;
   h6 = h2*h2*h2;
@@ -107,9 +107,9 @@ void initParticles(float** particles, float** velocities,
 
   for (int i = 0; i < numParticles; i++) {
 
-    (*particles)[i*3+0] = float(rand())/RAND_MAX*scale[0] + offset[0];
-    (*particles)[i*3+1] = float(rand())/RAND_MAX*scale[1] + offset[1];
-    (*particles)[i*3+2] = float(rand())/RAND_MAX*scale[2] + offset[2];
+    (*particles)[i*3+0] = float(rand())/RAND_MAX*tankSize/2.0f;
+    (*particles)[i*3+1] = float(rand())/RAND_MAX*tankSize/2.0f;
+    (*particles)[i*3+2] = float(rand())/RAND_MAX*tankSize/2.0f;
 
     (*velocities)[i*3+0] = 0.0f;
     (*velocities)[i*3+1] = 0.0f;

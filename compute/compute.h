@@ -2,7 +2,7 @@
 #define COMPUTE_H
 
 void initParticles(float** particles, float** velocities, 
-		   int numParticles, float scale[3], float offset[3]);
+		   int numParticles);
 void updateParticles(float* particles, float* velocities, int numParticles);
 
 void vecNormalize(const float* a, float* b);

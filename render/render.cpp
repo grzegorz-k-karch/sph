@@ -150,7 +150,6 @@ void createSphere(float radius,
   }
 }
 
-
 void transform()
 {
   float fnear = 0.01f;
@@ -257,7 +256,7 @@ int display(float* particles, int numParticles)
 
   glfwSwapBuffers(window);
 
-return glfwWindowShouldClose(window);
+  return glfwWindowShouldClose(window);
 }
 
 void initOpenGL()

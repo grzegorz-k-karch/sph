@@ -24,10 +24,7 @@ int main()
   initOpenGL();
   initGeometry();
 
-  float scale[3] = {tankSize/2.0f, tankSize/2.0f, tankSize/2.0f};
-  float offset[3] = {0.0f, 0.0f, 0.0f};
-
-  initParticles(&particles, &velocities, numParticles, scale, offset);
+  initParticles(&particles, &velocities, numParticles);
 
   int closeWindow = 0;
 
