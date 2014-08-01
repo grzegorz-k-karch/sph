@@ -318,3 +318,8 @@ void updateParticles(float* particles, float* velocities, int numParticles)
     }
   }
 }
+
+void createGrid()
+{
+
+}
