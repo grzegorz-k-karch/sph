@@ -16,6 +16,8 @@ parameters adjusted according to the fluids_v1 program:
 
 further materials:
  * https://www.youtube.com/watch?v=SQPCXzqH610
+ * http://image.diku.dk/projects/media/kelager.06.pdf
+ * Masterthesis in Informatik,Partikelbasierte Echtzeit-Fluidsimulation, Realtime particle-based fluid simulation,Stefan Auer
 
 PARAMETERS
 tank size		0.2154f		([m] side of a cube container with 10 liter of water)
@@ -29,4 +31,4 @@ smoothing length	0.01		(taken from fluids_v1; radius of kernel support; should b
 
 
 [NOT USED] gas constant k = 8.3144621f; // gas constant; here I simulate liquid
-[NOT USED] surface tension = 0.0000001197f;// surface tension coefficient of water against air at 25 degrees Celcius [dyn/cm] = 0.001 [N/m]
+[NOT USED] surface tension = 0.0728f;// surface tension coefficient of water against air at 20 degrees Celcius [dyn/cm] = 0.001 [N/m]

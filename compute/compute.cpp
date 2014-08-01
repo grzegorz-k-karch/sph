@@ -12,6 +12,7 @@ float dynVisc = 0.2f;
 float a_gravity[3] = {0.0f, -10.0f, 0.0f};
 float timestep = 0.005f;
 float tankSize = 0.2154f;
+float surfTension = 0.0728f;
 
 float h = 0.01f;
 float h9 = 0.0f;
@@ -69,6 +70,29 @@ float Wpoly6(const float r)
   return w;
 }
 
+float gradWpoly6(const float r)
+{
+  float w = 0.0f;
+  if (r <= h) {
+    float r2 = r*r;
+    float hr2 = h2 - r2;
+    hr2 = hr2*hr2;
+    w = -945.0f/(32.0f*M_PI*h9)*r*hr2;
+  }
+  return w;
+}
+
+float laplWpoly6(const float r)
+{
+  float w = 0.0f;
+  if (r <= h) {
+    float r2 = r*r;
+    float hr = h2 - r2;
+    float hr2 = hr*hr;
+    w = 945.0f/(32.0f*M_PI*h9)*(4.0f*r2*hr - hr2);
+  }
+  return w;
+}
 
 void initParticles(float** particles, float** velocities, 
 		   int numParticles, float scale[3], float offset[3])
@@ -107,7 +131,7 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 #pragma omp parallel for reduction(+:avgDensity)
   for (int i = 0; i < numParticles; i++) {
 
-    float rho = 0;
+    float rho = 0.0f;
     float *ri = &particles[i*3];
 
     for (int j = 0; j < numParticles; j++) {
@@ -124,8 +148,6 @@ void updateParticles(float* particles, float* velocities, int numParticles)
     densities[i] = rho;
     avgDensity += rho;
   }
-
-  std::cout << "avgDensity = " << avgDensity/numParticles << std::endl;
 
   // pressure-----------------------------------------------------------------
   float c = soundSpeed*soundSpeed;
@@ -179,9 +201,11 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 		    (ri[2]-rj[2])};
       float magr = std::sqrt(r[0]*r[0]+r[1]*r[1]+r[2]*r[2]);
 
-      fviscosity[0] += dynVisc*m*vdiff[0]/densities[j]*laplWviscosity(magr);
-      fviscosity[1] += dynVisc*m*vdiff[1]/densities[j]*laplWviscosity(magr);
-      fviscosity[2] += dynVisc*m*vdiff[2]/densities[j]*laplWviscosity(magr);
+      float tmp = dynVisc*m*laplWviscosity(magr)/densities[j];
+
+      fviscosity[0] += vdiff[0]*tmp;
+      fviscosity[1] += vdiff[1]*tmp;
+      fviscosity[2] += vdiff[2]*tmp;
     }
     
     f_total[i*3+0] += fviscosity[0];
@@ -198,6 +222,46 @@ void updateParticles(float* particles, float* velocities, int numParticles)
     f_total[i*3+2] += a_gravity[2]*densities[i];    
   }
 
+  // surface tension-----------------------------------------------------------
+#pragma omp parallel for
+  for (int i = 0; i < numParticles; i++) {
+
+    float gradcolor[3] = {0.0f, 0.0f, 0.0f};   
+    float laplcolor = 0.0f;
+    float *ri = &particles[i*3];
+
+    for (int j = 0; j < numParticles; j++) {
+
+      float *rj = &particles[j*3];
+      float r[3] = {(ri[0]-rj[0]), 
+		    (ri[1]-rj[1]), 
+		    (ri[2]-rj[2])};
+      float r2 = r[0]*r[0]+r[1]*r[1]+r[2]*r[2];
+      float magr = std::sqrt(r2);
+
+      float maggradcolor = m*gradWpoly6(magr)/densities[j];
+      float nr[3];
+      vecNormalize(r, nr);
+      nr[0] *= maggradcolor;
+      nr[1] *= maggradcolor;
+      nr[2] *= maggradcolor;
+      gradcolor[0] += nr[0];
+      gradcolor[1] += nr[1];
+      gradcolor[2] += nr[2];
+
+      laplcolor += m*laplWpoly6(magr)/densities[j];
+    }
+
+    vecNormalize(gradcolor, gradcolor);
+
+    float tmp = -surfTension*laplcolor;
+
+    f_total[i*3+0] += tmp*gradcolor[0];
+    f_total[i*3+1] += tmp*gradcolor[1];
+    f_total[i*3+2] += tmp*gradcolor[2];
+  }
+
+  // update velocity and advect particles--------------------------------------
 #pragma omp parallel for
   for (int i = 0; i < numParticles; i++) {
 
@@ -218,6 +282,7 @@ void updateParticles(float* particles, float* velocities, int numParticles)
   free(densities);
   free(f_total);
 
+  // check particles on/behind the boundary------------------------------------
 #pragma omp parallel for
   for (int i = 0; i < numParticles; i++) {
 
