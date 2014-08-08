@@ -23,7 +23,7 @@ GLfloat curquat[4];
 GLfloat lastquat[4];
 
 
-GLfloat modelTranslation[3] = { 0.0f, 0.0f, -1.5f };
+GLfloat modelTranslation[3] = { 0.0f, 0.0f, -1.0f };
 
 double mousePosX;
 double mousePosY;
