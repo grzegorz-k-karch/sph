@@ -7,7 +7,7 @@
 
 #include "compute.h"
 
-#define USE_GRID 0
+#define USE_GRID 1
 
 float soundSpeed = 1.0f;
 float m = 0.00020543f;
@@ -146,12 +146,12 @@ void assignParticlesToCells(float* particles, int numParticles)
     plists[cellId].push_front(pos);
   }
 
-  int numEmptyCells = 0;
-  for (int i = 0; i < numCells; i++) {
-    if (plists[i].empty()) {
-      numEmptyCells++;
-    }
-  }
+  // int numEmptyCells = 0;
+  // for (int i = 0; i < numCells; i++) {
+  //   if (plists[i].empty()) {
+  //     numEmptyCells++;
+  //   }
+  // }
 
   // std::cout << numEmptyCells << "/" << numCells << " (" 
   // 	    << numEmptyCells*100.0f/numCells << "%)" << std::endl;
@@ -184,6 +184,8 @@ void updateParticles(float* particles, float* velocities, int numParticles)
   const int gridSize = std::ceil(tankSize/cellSize);
 #endif
   for (int i = 0; i < numParticles; i++) {
+
+    int test = 0;
 
     float *ri = &particles[i*3];
 #if USE_GRID
@@ -220,7 +222,9 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 	    float magr = std::sqrt(r2);
 	    float rho = m*Wpoly6(magr);
 
-	    densities[i] += rho;       	    
+	    densities[i] += rho;
+
+	    if (magr <= h) test++;
 	  }
 	  // alternatively use auto iterator
 	  // for (auto it = plists[cellId].begin(); it != plists[cellId].end(); ++it) {
@@ -243,8 +247,15 @@ void updateParticles(float* particles, float* velocities, int numParticles)
       densities[i] += rho;       
       densities[j] += rho; 
 
+      if (magr <= h) test++;
     }
 #endif
+    static int done = 0;
+    if (i == 0 && done == 100) {
+      std::cout << "density " << densities[i] << " test " << test << std::endl;
+    }
+    if (i == 0)
+      done++;
   }
   // pressure-----------------------------------------------------------------
   float c = soundSpeed*soundSpeed;
