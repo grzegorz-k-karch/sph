@@ -184,7 +184,7 @@ void initGeometry()
 {
   // sphere for instancing
 
-  float radius = 0.0025f;
+  float radius = 0.002f;
   std::vector<float> Vertices;
   std::vector<float> Normals;  
   std::vector<unsigned int> Indices;

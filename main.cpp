@@ -5,7 +5,7 @@
 #include "compute.h"
 #include "render.h"
 
-int numParticles = 1500;
+int numParticles = 1000;
 float *particles = 0;
 float *velocities = 0;
 

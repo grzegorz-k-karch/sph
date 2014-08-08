@@ -2,8 +2,12 @@
 #include <cstdlib>
 #include <cmath>
 #include <iostream>
+#include <vector> 
+#include <forward_list>
 
 #include "compute.h"
+
+#define USE_GRID 0
 
 float soundSpeed = 1.0f;
 float m = 0.00020543f;
@@ -12,13 +16,16 @@ float dynVisc = 0.2f;
 float a_gravity[3] = {0.0f, -10.0f, 0.0f};
 float timestep = 0.005f;
 float tankSize = 0.2154f;
-float surfTension = 0.0728f;
+float surfTension = 0.0378f;//0.0728f;
 
 float h = 0.01f;
 float h9 = 0.0f;
 float h2 = 0.0f;
 float h6 = 0.0f;
 
+#if USE_GRID
+std::vector<std::forward_list<float*> > plists;
+#endif
 
 float vecLength(const float* a)
 {
@@ -116,9 +123,47 @@ void initParticles(float** particles, float** velocities,
     (*velocities)[i*3+2] = 0.0f;
   }
 }
+#if USE_GRID
+void assignParticlesToCells(float* particles, int numParticles)
+{
+  const float cellSize = h;
+  const int gridSize = std::ceil(tankSize/cellSize);
+  const int numCells = gridSize*gridSize*gridSize;
+
+  plists.clear();
+  plists.resize(numCells);
+  
+  for (int i = 0; i < numParticles; i++) {
+
+    float *pos = &particles[i*3];
+    int cellCoords[3] = {int(pos[0]/cellSize), 
+			 int(pos[1]/cellSize), 
+			 int(pos[2]/cellSize)};
+    int cellId = 
+      cellCoords[0] + 
+      cellCoords[1]*gridSize + 
+      cellCoords[2]*gridSize*gridSize;
+    plists[cellId].push_front(pos);
+  }
+
+  int numEmptyCells = 0;
+  for (int i = 0; i < numCells; i++) {
+    if (plists[i].empty()) {
+      numEmptyCells++;
+    }
+  }
+
+  // std::cout << numEmptyCells << "/" << numCells << " (" 
+  // 	    << numEmptyCells*100.0f/numCells << "%)" << std::endl;
+}
+#endif
 
 void updateParticles(float* particles, float* velocities, int numParticles)
 {
+#if USE_GRID
+  assignParticlesToCells(particles, numParticles);
+#endif
+
   float *f_total = (float*)malloc(numParticles*3*sizeof(float));
   for (int i = 0; i < numParticles*3; i++) {
     f_total[i] = 0.0f;
@@ -134,12 +179,57 @@ void updateParticles(float* particles, float* velocities, int numParticles)
   }
 
   float own_rho = m*Wpoly6(0.0f);
-
+#if USE_GRID
+  const float cellSize = h;
+  const int gridSize = std::ceil(tankSize/cellSize);
+#endif
   for (int i = 0; i < numParticles; i++) {
 
     float *ri = &particles[i*3];
-    densities[i] += own_rho;
+#if USE_GRID
+    int cellCoords[3] = {int(ri[0]/cellSize), 
+    			 int(ri[1]/cellSize), 
+    			 int(ri[2]/cellSize)};
 
+    int xext[2] = {cellCoords[0]-1, cellCoords[0]+1};
+    if (xext[0] < 0) xext[0] = 0;
+    if (xext[1] >= gridSize) xext[1] = gridSize-1;
+
+    int yext[2] = {cellCoords[1]-1, cellCoords[1]+1};
+    if (yext[0] < 0) yext[0] = 0;
+    if (yext[1] >= gridSize) yext[1] = gridSize-1;
+
+    int zext[2] = {cellCoords[2]-1, cellCoords[2]+1};
+    if (zext[0] < 0) zext[0] = 0;
+    if (zext[1] >= gridSize) zext[1] = gridSize-1;
+
+    for (int z = zext[0]; z <= zext[1]; z++) {
+      for (int y = yext[0]; y <= yext[1]; y++) {
+	for (int x = xext[0]; x <= xext[1]; x++) {
+	  
+	  int cellId = x + y*gridSize + z*gridSize*gridSize;
+	  if (plists[cellId].empty()) {
+	    continue;
+	  }
+	  // fancy c++11 range iterator
+	  for (float*& rj : plists[cellId]) {
+	    float r[3] = {(ri[0]-rj[0]), 
+			  (ri[1]-rj[1]), 
+			  (ri[2]-rj[2])};
+	    float r2 = r[0]*r[0]+r[1]*r[1]+r[2]*r[2];
+	    float magr = std::sqrt(r2);
+	    float rho = m*Wpoly6(magr);
+
+	    densities[i] += rho;       	    
+	  }
+	  // alternatively use auto iterator
+	  // for (auto it = plists[cellId].begin(); it != plists[cellId].end(); ++it) {
+	  // }
+	}
+      }
+    }
+#else
+    densities[i] += own_rho;
     for (int j = i+1; j < numParticles; j++) {
 
       float *rj = &particles[j*3];
@@ -154,6 +244,7 @@ void updateParticles(float* particles, float* velocities, int numParticles)
       densities[j] += rho; 
 
     }
+#endif
   }
   // pressure-----------------------------------------------------------------
   float c = soundSpeed*soundSpeed;
@@ -231,11 +322,11 @@ void updateParticles(float* particles, float* velocities, int numParticles)
   float *laplcolors = new float[numParticles];
 #pragma omp parallel for
   for (int i = 0; i < numParticles; i++) {
-  gradcolors[i*3+0] = 0.0f;
-  gradcolors[i*3+1] = 0.0f;
-  gradcolors[i*3+2] = 0.0f;
-  laplcolors[i] = 0.0f;
-}
+    gradcolors[i*3+0] = 0.0f;
+    gradcolors[i*3+1] = 0.0f;
+    gradcolors[i*3+2] = 0.0f;
+    laplcolors[i] = 0.0f;
+  }
 
   for (int i = 0; i < numParticles; i++) {
 
@@ -264,12 +355,12 @@ void updateParticles(float* particles, float* velocities, int numParticles)
       gradcolors[i*3+1] += nr[1]*md;
       gradcolors[i*3+2] += nr[2]*md;
 
-      gradcolors[j*3+0] += nr[0]*md2;
-      gradcolors[j*3+1] += nr[1]*md2;
-      gradcolors[j*3+2] += nr[2]*md2;
+      gradcolors[j*3+0] += -nr[0]*md2;
+      gradcolors[j*3+1] += -nr[1]*md2;
+      gradcolors[j*3+2] += -nr[2]*md2;
 
       laplcolors[i] += md*laplWpoly6(magr);
-      laplcolors[j] -= md*laplWpoly6(magr);
+      laplcolors[j] += md*laplWpoly6(magr);
     }
 
     vecNormalize(&gradcolors[i*3], &gradcolors[i*3]);
