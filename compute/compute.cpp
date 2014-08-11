@@ -4,6 +4,7 @@
 #include <iostream>
 #include <vector> 
 #include <forward_list>
+#include <algorithm>
 
 #include "compute.h"
 
@@ -24,7 +25,7 @@ float h2 = 0.0f;
 float h6 = 0.0f;
 
 #if USE_GRID
-std::vector<std::forward_list<float*> > plists;
+std::vector<std::forward_list<int> > plists;
 #endif
 
 float vecLength(const float* a)
@@ -126,13 +127,13 @@ void initParticles(float** particles, float** velocities,
 #if USE_GRID
 void assignParticlesToCells(float* particles, int numParticles)
 {
-  const float cellSize = h*(1.1);
+  const float cellSize = h;
   const int gridSize = std::ceil(tankSize/cellSize);
   const int numCells = gridSize*gridSize*gridSize;
 
   plists.clear();
   plists.resize(numCells);
-  
+
   for (int i = 0; i < numParticles; i++) {
 
     float *pos = &particles[i*3];
@@ -144,8 +145,8 @@ void assignParticlesToCells(float* particles, int numParticles)
       cellCoords[1]*gridSize + 
       cellCoords[2]*gridSize*gridSize;
 
-    plists[cellId].push_front(pos);
-  }
+    plists[cellId].push_front(i);
+  }      
 }
 #endif
 
@@ -160,7 +161,6 @@ void updateParticles(float* particles, float* velocities, int numParticles)
     f_total[i] = 0.0f;
   }
 
-
   float avgDensity = 0.0f;
   float *densities = (float*)malloc(numParticles*sizeof(float));
 
@@ -172,17 +172,17 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 
   float own_rho = m*Wpoly6(0.0f);
 #if USE_GRID
-  const float cellSize = h*(1.1);
+  const float cellSize = h;
   const int gridSize = std::ceil(tankSize/cellSize);
 #endif
 
-  static int done = 0;
+  // static int done = 0;
+  // int testStep = 200;
 
   for (int i = 0; i < numParticles; i++) {
 
-    std::vector<std::vector<float> > testVec;
-    testVec.clear();
-
+    // std::vector<std::vector<float> > testVec;
+    // testVec.clear();
 
     float *ri = &particles[i*3];
 #if USE_GRID
@@ -190,28 +190,47 @@ void updateParticles(float* particles, float* velocities, int numParticles)
     			 int(ri[1]/cellSize), 
     			 int(ri[2]/cellSize)};
 
-    int xext[2] = {cellCoords[0]-2, cellCoords[0]+2};
+    int xext[2] = {cellCoords[0]-1, cellCoords[0]+1};
     if (xext[0] < 0) xext[0] = 0;
     if (xext[1] >= gridSize) xext[1] = gridSize-1;
 
-    int yext[2] = {cellCoords[1]-2, cellCoords[1]+2};
+    int yext[2] = {cellCoords[1]-1, cellCoords[1]+1};
     if (yext[0] < 0) yext[0] = 0;
     if (yext[1] >= gridSize) yext[1] = gridSize-1;
 
-    int zext[2] = {cellCoords[2]-2, cellCoords[2]+2};
+    int zext[2] = {cellCoords[2]-1, cellCoords[2]+1};
     if (zext[0] < 0) zext[0] = 0;
     if (zext[1] >= gridSize) zext[1] = gridSize-1;
 
+    std::vector<int> lst;
+    lst.clear();
+	  
     for (int z = zext[0]; z <= zext[1]; z++) {
       for (int y = yext[0]; y <= yext[1]; y++) {
 	for (int x = xext[0]; x <= xext[1]; x++) {
 	  
 	  int cellId = x + y*gridSize + z*gridSize*gridSize;
+
 	  if (plists[cellId].empty()) {
 	    continue;
 	  }
+
+	  // 	  for (int& j : plists[cellId]) {
+	  // 	    lst.push_back(j);
+	  // 	  }
+	  // 	}
+	  //   }
+	  // }
+	  // 	  std::sort(lst.begin(), lst.end());
+
 	  // fancy c++11 range iterator
-	  for (float*& rj : plists[cellId]) {
+	  // for (float*& rj : plists[cellId]) {
+	  for (int& j : plists[cellId]) {
+
+	    // for (int j = 0; j < lst.size(); j++) {
+	    // float *rj = &particles[lst[j]*3];
+
+	    float *rj = &particles[j*3];
 	    float r[3] = {(ri[0]-rj[0]), 
 			  (ri[1]-rj[1]), 
 			  (ri[2]-rj[2])};
@@ -221,25 +240,25 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 
 	    densities[i] += rho;
 
-	    if (i == 999 && magr <= h) {
-	      std::vector<float> vv;
-	      vv.clear();
-	      vv.push_back(rj[0]);
-	      vv.push_back(rj[1]);
-	      vv.push_back(rj[2]);
-	      vv.push_back(magr);
-	      testVec.push_back(vv);
-	    }
+	    // if (i == 0 && magr <= h) {
+	    //   std::vector<float> vv;
+	    //   vv.clear();
+	    //   vv.push_back(rj[0]);
+	    //   vv.push_back(rj[1]);
+	    //   vv.push_back(rj[2]);
+	    //   vv.push_back(magr);
+	    //   testVec.push_back(vv);
+	    // }
 	  }
 	  // alternatively use auto iterator
 	  // for (auto it = plists[cellId].begin(); it != plists[cellId].end(); ++it) {
 	  // }
-	}
+    	}
       }
     }
 #else
-    //    densities[i] += own_rho;
-    for (int j = 0; j < numParticles; j++) {//i+1; j < numParticles; j++) {
+    densities[i] += own_rho;
+    for (int j = i+1; j < numParticles; j++) {
 
       float *rj = &particles[j*3];
       float r[3] = {(ri[0]-rj[0]), 
@@ -249,34 +268,35 @@ void updateParticles(float* particles, float* velocities, int numParticles)
       float magr = std::sqrt(r2);
       float rho = m*Wpoly6(magr);
 
-      densities[i] += rho;       
-      // densities[j] += rho; 
+      densities[i] += rho;
+      densities[j] += rho; 
 
-      if (i == 999 && magr <= h) {
-	std::vector<float> vv;
-	vv.clear();
-	vv.push_back(rj[0]);
-	vv.push_back(rj[1]);
-	vv.push_back(rj[2]);
-	vv.push_back(magr);
-	testVec.push_back(vv);
-      }
+      // if (i == 0 && magr <= h) {
+      // 	std::vector<float> vv;
+      // 	vv.clear();
+      // 	vv.push_back(rj[0]);
+      // 	vv.push_back(rj[1]);
+      // 	vv.push_back(rj[2]);
+      // 	vv.push_back(magr);
+      // 	testVec.push_back(vv);
+      // }
     }
 #endif
-    if (i == 999 && done == 100) {
-      std::cout << "density " << densities[i] << std::endl;
-      //      done = 1;
+    // if (i == 0 && done == testStep) {
+    //   std::cout << "density " << densities[i] << std::endl;
+    //   //      done = 1;
 
-      for (int j = 0; j < testVec.size(); j++) {
-	std::cout << testVec[j][0] << " " 
-		  << testVec[j][1] << " " 
-		  << testVec[j][2] << " " 
-		  << testVec[j][3] << std::endl;
-      }
-
-      std::cout << ">> " << cellSize << " " << gridSize << " " << tankSize << std::endl;
-    }
-    if (i==999) done++;
+    //   for (int j = 0; j < testVec.size(); j++) {
+    // 	std::cout << testVec[j][0] << " " 
+    // 		  << testVec[j][1] << " " 
+    // 		  << testVec[j][2] << " " 
+    // 		  << testVec[j][3] << std::endl;
+    //   }
+#if USE_GRID
+      // std::cout << ">> " << cellSize << " " << gridSize << " " << tankSize << std::endl;
+#endif
+    // }
+    // if (i==0) done++;
   }
   // pressure-----------------------------------------------------------------
   float c = soundSpeed*soundSpeed;
