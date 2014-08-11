@@ -5,7 +5,7 @@
 #include "compute.h"
 #include "render.h"
 
-int numParticles = 1000;
+int numParticles = 3000;
 float *particles = 0;
 float *velocities = 0;
 
@@ -30,8 +30,13 @@ int main()
 
   while (!closeWindow) {
 
+    // clock_t t = clock();
+
     updateParticles(particles, velocities, numParticles);
     closeWindow = display(particles, numParticles);
+
+    // t = clock() - t;
+    // std::cout << "elapsed time: " << float(t)/CLOCKS_PER_SEC << std::endl;
   }
 
   if (particles != 0) {
