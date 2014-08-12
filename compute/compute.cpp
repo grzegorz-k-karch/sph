@@ -9,6 +9,7 @@
 #include "compute.h"
 
 #define USE_GRID 1
+#define SINGLE_PASS 1
 
 float soundSpeed = 1.0f;
 float m = 0.00020543f;
@@ -180,6 +181,10 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 
     float *ri = &particles[i*3];
 #if USE_GRID
+
+#if SINGLE_PASS
+    densities[i] += own_rho;
+#endif
     int cellCoords[3] = {int(ri[0]/cellSize), 
     			 int(ri[1]/cellSize), 
     			 int(ri[2]/cellSize)};
@@ -207,7 +212,11 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 	  }
 
 	  for (int& j : plists[cellId]) {
-
+#if SINGLE_PASS
+	    if (j <= i) {
+	      continue;
+	    }
+#endif
 	    float *rj = &particles[j*3];
 	    float r[3] = {(ri[0]-rj[0]), 
 			  (ri[1]-rj[1]), 
@@ -217,7 +226,9 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 	    float rho = m*Wpoly6(magr);
 
 	    densities[i] += rho;
-
+#if SINGLE_PASS
+	    densities[j] += rho; 
+#endif
 	  }
     	}
       }
@@ -239,6 +250,15 @@ void updateParticles(float* particles, float* velocities, int numParticles)
     }
 #endif
   }
+
+  // static int testStep = 1;
+  // static int done = 0;
+
+  // if (done == testStep) {
+  //   std::cout << "densities[0] = " << densities[0] << std::endl;
+  // }
+  // done++;
+
   // pressure-----------------------------------------------------------------
   float c = soundSpeed*soundSpeed;
   for (int i = 0; i < numParticles; i++) {
@@ -275,6 +295,11 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 
 	  for (int& j : plists[cellId]) {
 
+#if SINGLE_PASS
+	    if (j <= i) {
+	      continue;
+	    }
+#endif
 	    float *rj = &particles[j*3];
 	    float pj = c*(densities[j]-rho0);
       
@@ -291,6 +316,11 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 	    f_total[i*3+0] += mfp*r[0];
 	    f_total[i*3+1] += mfp*r[1];
 	    f_total[i*3+2] += mfp*r[2];
+#if SINGLE_PASS
+	    f_total[j*3+0] += -mfp*r[0];
+	    f_total[j*3+1] += -mfp*r[1];
+	    f_total[j*3+2] += -mfp*r[2];
+#endif
 	  }
 	}
       }
@@ -358,6 +388,11 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 
 	  for (int& j : plists[cellId]) {
 
+#if SINGLE_PASS
+	    if (j <= i) {
+	      continue;
+	    }
+#endif
 	    float *rj = &particles[j*3];
 	    float *vj = &velocities[j*3];
 	    float vdiff[3] = {vj[0]-vi[0], vj[1]-vi[1], vj[2]-vi[2]};
@@ -371,6 +406,11 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 	    f_total[i*3+0] += vdiff[0]*tmp;
 	    f_total[i*3+1] += vdiff[1]*tmp;
 	    f_total[i*3+2] += vdiff[2]*tmp;
+#if SINGLE_PASS
+	    f_total[j*3+0] += -vdiff[0]*tmp;
+	    f_total[j*3+1] += -vdiff[1]*tmp;
+	    f_total[j*3+2] += -vdiff[2]*tmp;
+#endif
 	  }
 	}
       }
@@ -451,6 +491,11 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 
 	  for (int& j : plists[cellId]) {
 
+#if SINGLE_PASS
+	    if (j <= i) {
+	      continue;
+	    }
+#endif
 	    float *rj = &particles[j*3];
 	    float r[3] = {(ri[0]-rj[0]), 
 			  (ri[1]-rj[1]), 
@@ -469,8 +514,14 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 	    gradcolors[i*3+0] += nr[0]*md;
 	    gradcolors[i*3+1] += nr[1]*md;
 	    gradcolors[i*3+2] += nr[2]*md;
-
 	    laplcolors[i] += md*laplWpoly6(magr);
+#if SINGLE_PASS
+	    float md2 = m/densities[i];
+	    gradcolors[j*3+0] += -nr[0]*md2;
+	    gradcolors[j*3+1] += -nr[1]*md2;
+	    gradcolors[j*3+2] += -nr[2]*md2;
+	    laplcolors[j] += md*laplWpoly6(magr);
+#endif
 	  }
 	}
       }
