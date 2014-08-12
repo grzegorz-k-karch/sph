@@ -11,6 +11,7 @@
 #define USE_GRID 1
 #define SINGLE_PASS 1
 #define ITERATE_CELLS 1
+#define CELL_SINGLE_PASS 1
 
 float soundSpeed = 1.0f;
 float m = 0.00020543f;
@@ -27,7 +28,9 @@ float h2 = 0.0f;
 float h6 = 0.0f;
 
 #if USE_GRID
+#if CELL_SINGLE_PASS
 int cellOffsets[13];
+#endif
 std::vector<std::forward_list<int> > plists;
 #endif
 
@@ -127,6 +130,7 @@ void initParticles(float** particles, float** velocities,
     (*velocities)[i*3+2] = 0.0f;
   }
 
+#if CELL_SINGLE_PASS
   const float cellSize = h;
   const int gridSize = std::ceil(tankSize/cellSize);
   int nx = gridSize;
@@ -144,6 +148,7 @@ void initParticles(float** particles, float** velocities,
   cellOffsets[10] = -1 + nx + nxy; // - , 0 , + (11)
   cellOffsets[11] =      nx + nxy; // 0 , + , + (12)
   cellOffsets[12] =  1 + nx + nxy; // + , + , + (13)
+#endif
 }
 #if USE_GRID
 void assignParticlesToCells(float* particles, int numParticles)
@@ -495,7 +500,7 @@ void updateParticles(float* particles, float* velocities, int numParticles)
     for (int j = i+1; j < numParticles; j++) {
 
       float *rj = &particles[j*3];
-      float pj = c*(densities[j]-rho0);
+      float pj = cs*(densities[j]-rho0);
       
       float r[3] = {(ri[0]-rj[0]), 
 		    (ri[1]-rj[1]), 
