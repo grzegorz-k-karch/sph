@@ -55,56 +55,46 @@ void vecNormalize(const float* a, float* b)
 float laplWviscosity(const float r)
 {
   float w = 0.0f;
-  if (r <= h) {
-    w = 45.0f/(M_PI*h6)*(h-r);
-  }
+  w = 45.0f/(M_PI*h6)*(h-r);
   return w;
 }
 
 float gradWspiky(const float r)
 {
   float w = 0.0f;
-  if (r <= h) {
-    float hr = h - r;
-    float hr2 = hr*hr;
-    w = -45.0f/(M_PI*h6)*hr2;
-  }
+  float hr = h - r;
+  float hr2 = hr*hr;
+  w = -45.0f/(M_PI*h6)*hr2;
   return w;
 }
 
 float Wpoly6(const float r)
 {
   float w = 0.0f;
-  if (r <= h) {
-    float r2 = r*r;
-    float hr3 = h2 - r2;
-    hr3 = hr3*hr3*hr3;
-    w = 315.0f/(64.0f*M_PI*h9)*hr3;
-  }
+  float r2 = r*r;
+  float hr3 = h2 - r2;
+  hr3 = hr3*hr3*hr3;
+  w = 315.0f/(64.0f*M_PI*h9)*hr3;
   return w;
 }
 
 float gradWpoly6(const float r)
 {
   float w = 0.0f;
-  if (r <= h) {
-    float r2 = r*r;
-    float hr2 = h2 - r2;
-    hr2 = hr2*hr2;
-    w = -945.0f/(32.0f*M_PI*h9)*r*hr2;
-  }
+  float r2 = r*r;
+  float hr2 = h2 - r2;
+  hr2 = hr2*hr2;
+  w = -945.0f/(32.0f*M_PI*h9)*r*hr2;
   return w;
 }
 
 float laplWpoly6(const float r)
 {
   float w = 0.0f;
-  if (r <= h) {
-    float r2 = r*r;
-    float hr = h2 - r2;
-    float hr2 = hr*hr;
-    w = 945.0f/(32.0f*M_PI*h9)*(4.0f*r2*hr - hr2);
-  }
+  float r2 = r*r;
+  float hr = h2 - r2;
+  float hr2 = hr*hr;
+  w = 945.0f/(32.0f*M_PI*h9)*(4.0f*r2*hr - hr2);
   return w;
 }
 
@@ -204,9 +194,7 @@ void updateParticles(float* particles, float* velocities, int numParticles)
   const int numCells = gridSize*gridSize*gridSize;
 #endif
 
-#if 1
   for (int c = 0; c < numCells; c++) {
-
     for (int& i : plists[c]) {
 
       float *ri = &particles[i*3];
@@ -227,6 +215,7 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 			(ri[2]-rj[2])};
 	  float r2 = r[0]*r[0]+r[1]*r[1]+r[2]*r[2];
 	  float magr = std::sqrt(r2);
+	  if (magr > h) continue;
 	  float rho = m*Wpoly6(magr);
 
 	  densities[i] += rho;
@@ -235,150 +224,7 @@ void updateParticles(float* particles, float* velocities, int numParticles)
       }
     }
   }
-#else
-#if ITERATE_CELLS
-  for (int c = 0; c < numCells; c++) {
 
-    if (plists[c].empty()) {
-      continue;
-    }
-
-    int xi = c%gridSize;
-    int yi = (c/gridSize)%gridSize;
-    int zi = c/(gridSize*gridSize);
-    
-    int cellCoords[3] = {xi, yi, zi};
-
-    int xext[2] = {cellCoords[0]-1, cellCoords[0]+1};
-    if (xext[0] < 0) xext[0] = 0;
-    if (xext[1] >= gridSize) xext[1] = gridSize-1;
-
-    int yext[2] = {cellCoords[1]-1, cellCoords[1]+1};
-    if (yext[0] < 0) yext[0] = 0;
-    if (yext[1] >= gridSize) yext[1] = gridSize-1;
-
-    int zext[2] = {cellCoords[2]-1, cellCoords[2]+1};
-    if (zext[0] < 0) zext[0] = 0;
-    if (zext[1] >= gridSize) zext[1] = gridSize-1;
-    
-    for (int& i : plists[c]) {
-
-      float *ri = &particles[i*3];
-#if SINGLE_PASS
-      densities[i] += own_rho;
-#endif
-      for (int z = zext[0]; z <= zext[1]; z++) {
-	for (int y = yext[0]; y <= yext[1]; y++) {
-	  for (int x = xext[0]; x <= xext[1]; x++) {
-	  
-	    int cellId = x + y*gridSize + z*gridSize*gridSize;
-
-	    if (plists[cellId].empty()) {
-	      continue;
-	    }
-
-	    for (int& j : plists[cellId]) {
-#if SINGLE_PASS
-	      if (j <= i) {
-		continue;
-	      }
-#endif
-	      float *rj = &particles[j*3];
-	      float r[3] = {(ri[0]-rj[0]), 
-			    (ri[1]-rj[1]), 
-			    (ri[2]-rj[2])};
-	      float r2 = r[0]*r[0]+r[1]*r[1]+r[2]*r[2];
-	      float magr = std::sqrt(r2);
-	      float rho = m*Wpoly6(magr);
-
-	      densities[i] += rho;
-#if SINGLE_PASS
-	      densities[j] += rho; 
-#endif
-	    }
-	  }
-	}
-      }
-    }
-  }
-	 
-#else//ITERATE_CELLS
-
-  for (int i = 0; i < numParticles; i++) {
-
-    float *ri = &particles[i*3];
-#if USE_GRID
-
-#if SINGLE_PASS
-    densities[i] += own_rho;
-#endif
-    int cellCoords[3] = {int(ri[0]/cellSize), 
-    			 int(ri[1]/cellSize), 
-    			 int(ri[2]/cellSize)};
-
-    int xext[2] = {cellCoords[0]-1, cellCoords[0]+1};
-    if (xext[0] < 0) xext[0] = 0;
-    if (xext[1] >= gridSize) xext[1] = gridSize-1;
-
-    int yext[2] = {cellCoords[1]-1, cellCoords[1]+1};
-    if (yext[0] < 0) yext[0] = 0;
-    if (yext[1] >= gridSize) yext[1] = gridSize-1;
-
-    int zext[2] = {cellCoords[2]-1, cellCoords[2]+1};
-    if (zext[0] < 0) zext[0] = 0;
-    if (zext[1] >= gridSize) zext[1] = gridSize-1;
-	  
-    for (int z = zext[0]; z <= zext[1]; z++) {
-      for (int y = yext[0]; y <= yext[1]; y++) {
-	for (int x = xext[0]; x <= xext[1]; x++) {
-	  
-	  int cellId = x + y*gridSize + z*gridSize*gridSize;
-
-	  if (plists[cellId].empty()) {
-	    continue;
-	  }
-
-	  for (int& j : plists[cellId]) {
-#if SINGLE_PASS
-	    if (j <= i) {
-	      continue;
-	    }
-#endif
-	    float *rj = &particles[j*3];
-	    float r[3] = {(ri[0]-rj[0]), 
-			  (ri[1]-rj[1]), 
-			  (ri[2]-rj[2])};
-	    float r2 = r[0]*r[0]+r[1]*r[1]+r[2]*r[2];
-	    float magr = std::sqrt(r2);
-	    float rho = m*Wpoly6(magr);
-
-	    densities[i] += rho;
-#if SINGLE_PASS
-	    densities[j] += rho; 
-#endif
-	  }
-    	}
-      }
-    }
-#else
-    densities[i] += own_rho;
-    for (int j = i+1; j < numParticles; j++) {
-
-      float *rj = &particles[j*3];
-      float r[3] = {(ri[0]-rj[0]), 
-		    (ri[1]-rj[1]), 
-		    (ri[2]-rj[2])};
-      float r2 = r[0]*r[0]+r[1]*r[1]+r[2]*r[2];
-      float magr = std::sqrt(r2);
-      float rho = m*Wpoly6(magr);
-
-      densities[i] += rho;
-      densities[j] += rho; 
-    }
-#endif
-  }
-#endif
-#endif
   static int testStep = 1;
   static int done = 0;
 
@@ -389,333 +235,85 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 
   // pressure-----------------------------------------------------------------
   float cs = soundSpeed*soundSpeed;
-#if ITERATE_CELLS
+
   for (int c = 0; c < numCells; c++) {
-
-    if (plists[c].empty()) {
-      continue;
-    }
-
-    int xi = c%gridSize;
-    int yi = (c/gridSize)%gridSize;
-    int zi = c/(gridSize*gridSize);
-    
-    int cellCoords[3] = {xi, yi, zi};
-
-    int xext[2] = {cellCoords[0]-1, cellCoords[0]+1};
-    if (xext[0] < 0) xext[0] = 0;
-    if (xext[1] >= gridSize) xext[1] = gridSize-1;
-
-    int yext[2] = {cellCoords[1]-1, cellCoords[1]+1};
-    if (yext[0] < 0) yext[0] = 0;
-    if (yext[1] >= gridSize) yext[1] = gridSize-1;
-
-    int zext[2] = {cellCoords[2]-1, cellCoords[2]+1};
-    if (zext[0] < 0) zext[0] = 0;
-    if (zext[1] >= gridSize) zext[1] = gridSize-1;
-    
     for (int& i : plists[c]) {
-
+	
       float *ri = &particles[i*3];
       float pi = cs*(densities[i]-rho0);
 
-      for (int z = zext[0]; z <= zext[1]; z++) {
-	for (int y = yext[0]; y <= yext[1]; y++) {
-	  for (int x = xext[0]; x <= xext[1]; x++) {
+      for (int k = 0; k < 14; k++) {
 
-	    int cellId = x + y*gridSize + z*gridSize*gridSize;
+	int cellId = c + cellOffsets[k];
+	if (cellId >= numCells) continue;
+	
+	for (int& j : plists[cellId]) {
 
-	    if (plists[cellId].empty()) {
-	      continue;
-	    }
+	  if (k == 0 && j <= i) continue;
 
-	    for (int& j : plists[cellId]) {
-
-#if SINGLE_PASS
-	      if (j <= i) {
-		continue;
-	      }
-#endif
-	      float *rj = &particles[j*3];
-	      float pj = cs*(densities[j]-rho0);
+	  float *rj = &particles[j*3];
+	  float pj = cs*(densities[j]-rho0);
       
-	      float r[3] = {(ri[0]-rj[0]), 
-			    (ri[1]-rj[1]), 
-			    (ri[2]-rj[2])};
-	      float magr = std::sqrt(r[0]*r[0]+r[1]*r[1]+r[2]*r[2]);
-	      float mfp = -m*(pi+pj)/(densities[i]+densities[j])*gradWspiky(magr);
-	      // FROM FLUIDS: (does not work well)
-	      // float mfp = -m*(pi+pj)/(densities[i]*densities[j])*gradWspiky(magr);
+	  float r[3] = {(ri[0]-rj[0]), 
+			(ri[1]-rj[1]), 
+			(ri[2]-rj[2])};
+	  float magr = std::sqrt(r[0]*r[0]+r[1]*r[1]+r[2]*r[2]);
+	  if (magr > h) continue;
+	  float mfp = -m*(pi+pj)/(densities[i]+densities[j])*gradWspiky(magr);
+	  // FROM FLUIDS: (does not work well)
+	  // float mfp = -m*(pi+pj)/(densities[i]*densities[j])*gradWspiky(magr);
 
-	      vecNormalize(r,r);
+	  vecNormalize(r,r);
 
-	      f_total[i*3+0] += mfp*r[0];
-	      f_total[i*3+1] += mfp*r[1];
-	      f_total[i*3+2] += mfp*r[2];
-#if SINGLE_PASS
-	      f_total[j*3+0] += -mfp*r[0];
-	      f_total[j*3+1] += -mfp*r[1];
-	      f_total[j*3+2] += -mfp*r[2];
-#endif
-	    }
-	  }
+	  f_total[i*3+0] += mfp*r[0];
+	  f_total[i*3+1] += mfp*r[1];
+	  f_total[i*3+2] += mfp*r[2];
+
+	  f_total[j*3+0] += -mfp*r[0];
+	  f_total[j*3+1] += -mfp*r[1];
+	  f_total[j*3+2] += -mfp*r[2];
 	}
       }
     }
-  }  
-#else//ITERATE_CELLS
-  for (int i = 0; i < numParticles; i++) {
-
-    float *ri = &particles[i*3];
-    float pi = cs*(densities[i]-rho0);
-
-#if USE_GRID
-    int cellCoords[3] = {int(ri[0]/cellSize), 
-    			 int(ri[1]/cellSize), 
-    			 int(ri[2]/cellSize)};
-
-    int xext[2] = {cellCoords[0]-1, cellCoords[0]+1};
-    if (xext[0] < 0) xext[0] = 0;
-    if (xext[1] >= gridSize) xext[1] = gridSize-1;
-
-    int yext[2] = {cellCoords[1]-1, cellCoords[1]+1};
-    if (yext[0] < 0) yext[0] = 0;
-    if (yext[1] >= gridSize) yext[1] = gridSize-1;
-
-    int zext[2] = {cellCoords[2]-1, cellCoords[2]+1};
-    if (zext[0] < 0) zext[0] = 0;
-    if (zext[1] >= gridSize) zext[1] = gridSize-1;
-	  
-    for (int z = zext[0]; z <= zext[1]; z++) {
-      for (int y = yext[0]; y <= yext[1]; y++) {
-	for (int x = xext[0]; x <= xext[1]; x++) {
-
-	  int cellId = x + y*gridSize + z*gridSize*gridSize;
-
-	  if (plists[cellId].empty()) {
-	    continue;
-	  }
-
-	  for (int& j : plists[cellId]) {
-
-#if SINGLE_PASS
-	    if (j <= i) {
-	      continue;
-	    }
-#endif
-	    float *rj = &particles[j*3];
-	    float pj = cs*(densities[j]-rho0);
-      
-	    float r[3] = {(ri[0]-rj[0]), 
-			  (ri[1]-rj[1]), 
-			  (ri[2]-rj[2])};
-	    float magr = std::sqrt(r[0]*r[0]+r[1]*r[1]+r[2]*r[2]);
-	    float mfp = -m*(pi+pj)/(densities[i]+densities[j])*gradWspiky(magr);
-	    // FROM FLUIDS: (does not work well)
-	    // float mfp = -m*(pi+pj)/(densities[i]*densities[j])*gradWspiky(magr);
-
-	    vecNormalize(r,r);
-
-	    f_total[i*3+0] += mfp*r[0];
-	    f_total[i*3+1] += mfp*r[1];
-	    f_total[i*3+2] += mfp*r[2];
-#if SINGLE_PASS
-	    f_total[j*3+0] += -mfp*r[0];
-	    f_total[j*3+1] += -mfp*r[1];
-	    f_total[j*3+2] += -mfp*r[2];
-#endif
-	  }
-	}
-      }
-    }
-#else
-    for (int j = i+1; j < numParticles; j++) {
-
-      float *rj = &particles[j*3];
-      float pj = cs*(densities[j]-rho0);
-      
-      float r[3] = {(ri[0]-rj[0]), 
-		    (ri[1]-rj[1]), 
-		    (ri[2]-rj[2])};
-      float magr = std::sqrt(r[0]*r[0]+r[1]*r[1]+r[2]*r[2]);
-      float mfp = -m*(pi+pj)/(densities[i]+densities[j])*gradWspiky(magr);
-      // FROM FLUIDS: (does not work well)
-      // float mfp = -m*(pi+pj)/(densities[i]*densities[j])*gradWspiky(magr);
-
-      vecNormalize(r,r);
-
-      f_total[i*3+0] += mfp*r[0];
-      f_total[i*3+1] += mfp*r[1];
-      f_total[i*3+2] += mfp*r[2];
-
-      f_total[j*3+0] += -mfp*r[0];
-      f_total[j*3+1] += -mfp*r[1];
-      f_total[j*3+2] += -mfp*r[2];
-    }
-#endif
   }
-#endif//ITERATE_CELLS
-
   // visocity------------------------------------------------------------------
-#if ITERATE_CELLS
   for (int c = 0; c < numCells; c++) {
-
-    if (plists[c].empty()) {
-      continue;
-    }
-
-    int xi = c%gridSize;
-    int yi = (c/gridSize)%gridSize;
-    int zi = c/(gridSize*gridSize);
-    
-    int cellCoords[3] = {xi, yi, zi};
-
-    int xext[2] = {cellCoords[0]-1, cellCoords[0]+1};
-    if (xext[0] < 0) xext[0] = 0;
-    if (xext[1] >= gridSize) xext[1] = gridSize-1;
-
-    int yext[2] = {cellCoords[1]-1, cellCoords[1]+1};
-    if (yext[0] < 0) yext[0] = 0;
-    if (yext[1] >= gridSize) yext[1] = gridSize-1;
-
-    int zext[2] = {cellCoords[2]-1, cellCoords[2]+1};
-    if (zext[0] < 0) zext[0] = 0;
-    if (zext[1] >= gridSize) zext[1] = gridSize-1;
-    
     for (int& i : plists[c]) {
-
+	
       float *ri = &particles[i*3];
       float *vi = &velocities[i*3];
       float fviscosity[3] = {0.0f, 0.0f, 0.0f};
 
-      for (int z = zext[0]; z <= zext[1]; z++) {
-	for (int y = yext[0]; y <= yext[1]; y++) {
-	  for (int x = xext[0]; x <= xext[1]; x++) {
-	  
-	    int cellId = x + y*gridSize + z*gridSize*gridSize;
+      for (int k = 0; k < 14; k++) {
 
-	    if (plists[cellId].empty()) {
-	      continue;
-	    }
+	int cellId = c + cellOffsets[k];
+	if (cellId >= numCells) continue;
+	
+	for (int& j : plists[cellId]) {
 
-	    for (int& j : plists[cellId]) {
+	  if (k == 0 && j <= i) continue;
 
-#if SINGLE_PASS
-	      if (j <= i) {
-		continue;
-	      }
-#endif
-	      float *rj = &particles[j*3];
-	      float *vj = &velocities[j*3];
-	      float vdiff[3] = {vj[0]-vi[0], vj[1]-vi[1], vj[2]-vi[2]};
-	      float r[3] = {(ri[0]-rj[0]), 
-			    (ri[1]-rj[1]), 
-			    (ri[2]-rj[2])};
-	      float magr = std::sqrt(r[0]*r[0]+r[1]*r[1]+r[2]*r[2]);
+	  float *rj = &particles[j*3];
+	  float *vj = &velocities[j*3];
+	  float vdiff[3] = {vj[0]-vi[0], vj[1]-vi[1], vj[2]-vi[2]};
+	  float r[3] = {(ri[0]-rj[0]), 
+			(ri[1]-rj[1]), 
+			(ri[2]-rj[2])};
+	  float magr = std::sqrt(r[0]*r[0]+r[1]*r[1]+r[2]*r[2]);
+	  if (magr > h) continue;
+	  float tmp = dynVisc*m*laplWviscosity(magr)*2.0f/(densities[i]+densities[j]);
 
-	      float tmp = dynVisc*m*laplWviscosity(magr)*2.0f/(densities[i]+densities[j]);
+	  f_total[i*3+0] += vdiff[0]*tmp;
+	  f_total[i*3+1] += vdiff[1]*tmp;
+	  f_total[i*3+2] += vdiff[2]*tmp;
 
-	      f_total[i*3+0] += vdiff[0]*tmp;
-	      f_total[i*3+1] += vdiff[1]*tmp;
-	      f_total[i*3+2] += vdiff[2]*tmp;
-#if SINGLE_PASS
-	      f_total[j*3+0] += -vdiff[0]*tmp;
-	      f_total[j*3+1] += -vdiff[1]*tmp;
-	      f_total[j*3+2] += -vdiff[2]*tmp;
-#endif
-	    }
-	  }
+	  f_total[j*3+0] += -vdiff[0]*tmp;
+	  f_total[j*3+1] += -vdiff[1]*tmp;
+	  f_total[j*3+2] += -vdiff[2]*tmp;
 	}
       }
     }
   }
-#else//ITERATE_CELLS
-  for (int i = 0; i < numParticles; i++) {
-
-    float *ri = &particles[i*3];
-    float *vi = &velocities[i*3];
-    float fviscosity[3] = {0.0f, 0.0f, 0.0f};
-
-#if USE_GRID
-    int cellCoords[3] = {int(ri[0]/cellSize), 
-    			 int(ri[1]/cellSize), 
-    			 int(ri[2]/cellSize)};
-
-    int xext[2] = {cellCoords[0]-1, cellCoords[0]+1};
-    if (xext[0] < 0) xext[0] = 0;
-    if (xext[1] >= gridSize) xext[1] = gridSize-1;
-
-    int yext[2] = {cellCoords[1]-1, cellCoords[1]+1};
-    if (yext[0] < 0) yext[0] = 0;
-    if (yext[1] >= gridSize) yext[1] = gridSize-1;
-
-    int zext[2] = {cellCoords[2]-1, cellCoords[2]+1};
-    if (zext[0] < 0) zext[0] = 0;
-    if (zext[1] >= gridSize) zext[1] = gridSize-1;
-	  
-    for (int z = zext[0]; z <= zext[1]; z++) {
-      for (int y = yext[0]; y <= yext[1]; y++) {
-	for (int x = xext[0]; x <= xext[1]; x++) {
-	  
-	  int cellId = x + y*gridSize + z*gridSize*gridSize;
-
-	  if (plists[cellId].empty()) {
-	    continue;
-	  }
-
-	  for (int& j : plists[cellId]) {
-
-#if SINGLE_PASS
-	    if (j <= i) {
-	      continue;
-	    }
-#endif
-	    float *rj = &particles[j*3];
-	    float *vj = &velocities[j*3];
-	    float vdiff[3] = {vj[0]-vi[0], vj[1]-vi[1], vj[2]-vi[2]};
-	    float r[3] = {(ri[0]-rj[0]), 
-			  (ri[1]-rj[1]), 
-			  (ri[2]-rj[2])};
-	    float magr = std::sqrt(r[0]*r[0]+r[1]*r[1]+r[2]*r[2]);
-
-	    float tmp = dynVisc*m*laplWviscosity(magr)*2.0f/(densities[i]+densities[j]);
-
-	    f_total[i*3+0] += vdiff[0]*tmp;
-	    f_total[i*3+1] += vdiff[1]*tmp;
-	    f_total[i*3+2] += vdiff[2]*tmp;
-#if SINGLE_PASS
-	    f_total[j*3+0] += -vdiff[0]*tmp;
-	    f_total[j*3+1] += -vdiff[1]*tmp;
-	    f_total[j*3+2] += -vdiff[2]*tmp;
-#endif
-	  }
-	}
-      }
-    }
-#else
-    for (int j = i+1; j < numParticles; j++) {
-
-      float *rj = &particles[j*3];
-      float *vj = &velocities[j*3];
-      float vdiff[3] = {vj[0]-vi[0], vj[1]-vi[1], vj[2]-vi[2]};
-      float r[3] = {(ri[0]-rj[0]), 
-		    (ri[1]-rj[1]), 
-		    (ri[2]-rj[2])};
-      float magr = std::sqrt(r[0]*r[0]+r[1]*r[1]+r[2]*r[2]);
-
-      float tmp = dynVisc*m*laplWviscosity(magr)*2.0f/(densities[i]+densities[j]);
-
-      f_total[i*3+0] += vdiff[0]*tmp;
-      f_total[i*3+1] += vdiff[1]*tmp;
-      f_total[i*3+2] += vdiff[2]*tmp;
-
-      f_total[j*3+0] += -vdiff[0]*tmp;
-      f_total[j*3+1] += -vdiff[1]*tmp;
-      f_total[j*3+2] += -vdiff[2]*tmp;
-    }
-#endif
-  }
-#endif
 
   // gravity-------------------------------------------------------------------
 #pragma omp parallel for
@@ -737,82 +335,52 @@ void updateParticles(float* particles, float* velocities, int numParticles)
     laplcolors[i] = 0.0f;
   }
 
-#if ITERATE_CELLS
   for (int c = 0; c < numCells; c++) {
-
-    if (plists[c].empty()) {
-      continue;
-    }
-
-    int xi = c%gridSize;
-    int yi = (c/gridSize)%gridSize;
-    int zi = c/(gridSize*gridSize);
-    
-    int cellCoords[3] = {xi, yi, zi};
-
-    int xext[2] = {cellCoords[0]-1, cellCoords[0]+1};
-    if (xext[0] < 0) xext[0] = 0;
-    if (xext[1] >= gridSize) xext[1] = gridSize-1;
-
-    int yext[2] = {cellCoords[1]-1, cellCoords[1]+1};
-    if (yext[0] < 0) yext[0] = 0;
-    if (yext[1] >= gridSize) yext[1] = gridSize-1;
-
-    int zext[2] = {cellCoords[2]-1, cellCoords[2]+1};
-    if (zext[0] < 0) zext[0] = 0;
-    if (zext[1] >= gridSize) zext[1] = gridSize-1;
-    
     for (int& i : plists[c]) {
 
       float *ri = &particles[i*3];
 
-      for (int z = zext[0]; z <= zext[1]; z++) {
-	for (int y = yext[0]; y <= yext[1]; y++) {
-	  for (int x = xext[0]; x <= xext[1]; x++) {
-	  
-	    int cellId = x + y*gridSize + z*gridSize*gridSize;
+      for (int k = 0; k < 14; k++) {
 
-	    if (plists[cellId].empty()) {
-	      continue;
-	    }
+	int cellId = c + cellOffsets[k];
+	if (cellId >= numCells) continue;
+	
+	for (int& j : plists[cellId]) {
 
-	    for (int& j : plists[cellId]) {
+	  if (k == 0 && j <= i) continue;
 
-// #if SINGLE_PASS
-// 	      if (j <= i) {
-// 		continue;
-// 	      }
-// #endif
-	      float *rj = &particles[j*3];
-	      float r[3] = {(ri[0]-rj[0]), 
-			    (ri[1]-rj[1]), 
-			    (ri[2]-rj[2])};
-	      float r2 = r[0]*r[0]+r[1]*r[1]+r[2]*r[2];
-	      float magr = std::sqrt(r2);
-	      float md = m/densities[j];
-	      float maggradcolor = gradWpoly6(magr);
-	      float nr[3];
+	  float *rj = &particles[j*3];
+	  float r[3] = {(ri[0]-rj[0]), 
+			(ri[1]-rj[1]), 
+			(ri[2]-rj[2])};
+	  float r2 = r[0]*r[0]+r[1]*r[1]+r[2]*r[2];
+	  float magr = std::sqrt(r2);
+	  if (magr > h) continue;
+	  float md = m*2.0f/(densities[i]+densities[j]);
+	  float maggradcolor = gradWpoly6(magr);
+	  float nr[3];
 
-	      vecNormalize(r, nr);
-	      nr[0] *= maggradcolor;
-	      nr[1] *= maggradcolor;
-	      nr[2] *= maggradcolor;
+	  vecNormalize(r, nr);
+	  nr[0] *= maggradcolor;
+	  nr[1] *= maggradcolor;
+	  nr[2] *= maggradcolor;
 
-	      gradcolors[i*3+0] += nr[0]*md;
-	      gradcolors[i*3+1] += nr[1]*md;
-	      gradcolors[i*3+2] += nr[2]*md;
-	      laplcolors[i] += md*laplWpoly6(magr);
-// #if SINGLE_PASS
-// 	      float md2 = m/densities[i];
-// 	      gradcolors[j*3+0] += -nr[0]*md2;
-// 	      gradcolors[j*3+1] += -nr[1]*md2;
-// 	      gradcolors[j*3+2] += -nr[2]*md2;
-// 	      laplcolors[j] += md*laplWpoly6(magr);
-// #endif
-	    }
-	  }
+	  gradcolors[i*3+0] += nr[0]*md;
+	  gradcolors[i*3+1] += nr[1]*md;
+	  gradcolors[i*3+2] += nr[2]*md;
+	  laplcolors[i] += md*laplWpoly6(magr);
+
+	  gradcolors[j*3+0] += -nr[0]*md;
+	  gradcolors[j*3+1] += -nr[1]*md;
+	  gradcolors[j*3+2] += -nr[2]*md;
+	  laplcolors[j] += md*laplWpoly6(magr);
 	}
-      }
+      }	
+    }
+  }
+#pragma omp parallel for
+  for (int i = 0; i < numParticles; i++) {
+
       vecNormalize(&gradcolors[i*3], &gradcolors[i*3]);
 
       float tmp = -surfTension*laplcolors[i];
@@ -820,117 +388,7 @@ void updateParticles(float* particles, float* velocities, int numParticles)
       f_total[i*3+0] += tmp*gradcolors[i*3+0];
       f_total[i*3+1] += tmp*gradcolors[i*3+1];
       f_total[i*3+2] += tmp*gradcolors[i*3+2];
-    }
-  }  
-#else//ITERATE_CELLS
-  for (int i = 0; i < numParticles; i++) {
-
-    float *ri = &particles[i*3];
-#if USE_GRID
-    int cellCoords[3] = {int(ri[0]/cellSize), 
-    			 int(ri[1]/cellSize), 
-    			 int(ri[2]/cellSize)};
-
-    int xext[2] = {cellCoords[0]-1, cellCoords[0]+1};
-    if (xext[0] < 0) xext[0] = 0;
-    if (xext[1] >= gridSize) xext[1] = gridSize-1;
-
-    int yext[2] = {cellCoords[1]-1, cellCoords[1]+1};
-    if (yext[0] < 0) yext[0] = 0;
-    if (yext[1] >= gridSize) yext[1] = gridSize-1;
-
-    int zext[2] = {cellCoords[2]-1, cellCoords[2]+1};
-    if (zext[0] < 0) zext[0] = 0;
-    if (zext[1] >= gridSize) zext[1] = gridSize-1;
-	  
-    for (int z = zext[0]; z <= zext[1]; z++) {
-      for (int y = yext[0]; y <= yext[1]; y++) {
-	for (int x = xext[0]; x <= xext[1]; x++) {
-	  
-	  int cellId = x + y*gridSize + z*gridSize*gridSize;
-
-	  if (plists[cellId].empty()) {
-	    continue;
-	  }
-
-	  for (int& j : plists[cellId]) {
-
-#if SINGLE_PASS
-	    if (j <= i) {
-	      continue;
-	    }
-#endif
-	    float *rj = &particles[j*3];
-	    float r[3] = {(ri[0]-rj[0]), 
-			  (ri[1]-rj[1]), 
-			  (ri[2]-rj[2])};
-	    float r2 = r[0]*r[0]+r[1]*r[1]+r[2]*r[2];
-	    float magr = std::sqrt(r2);
-	    float md = m/densities[j];
-	    float maggradcolor = gradWpoly6(magr);
-	    float nr[3];
-
-	    vecNormalize(r, nr);
-	    nr[0] *= maggradcolor;
-	    nr[1] *= maggradcolor;
-	    nr[2] *= maggradcolor;
-
-	    gradcolors[i*3+0] += nr[0]*md;
-	    gradcolors[i*3+1] += nr[1]*md;
-	    gradcolors[i*3+2] += nr[2]*md;
-	    laplcolors[i] += md*laplWpoly6(magr);
-#if SINGLE_PASS
-	    float md2 = m/densities[i];
-	    gradcolors[j*3+0] += -nr[0]*md2;
-	    gradcolors[j*3+1] += -nr[1]*md2;
-	    gradcolors[j*3+2] += -nr[2]*md2;
-	    laplcolors[j] += md*laplWpoly6(magr);
-#endif
-	  }
-	}
-      }
-    }
-#else
-    for (int j = i+1; j < numParticles; j++) {
-
-      float *rj = &particles[j*3];
-      float r[3] = {(ri[0]-rj[0]), 
-		    (ri[1]-rj[1]), 
-		    (ri[2]-rj[2])};
-      float r2 = r[0]*r[0]+r[1]*r[1]+r[2]*r[2];
-      float magr = std::sqrt(r2);
-
-
-      float md = m/densities[j];
-      float md2 = m/densities[i];
-      float maggradcolor = gradWpoly6(magr);
-      float nr[3];
-      vecNormalize(r, nr);
-      nr[0] *= maggradcolor;
-      nr[1] *= maggradcolor;
-      nr[2] *= maggradcolor;
-
-      gradcolors[i*3+0] += nr[0]*md;
-      gradcolors[i*3+1] += nr[1]*md;
-      gradcolors[i*3+2] += nr[2]*md;
-
-      gradcolors[j*3+0] += -nr[0]*md2;
-      gradcolors[j*3+1] += -nr[1]*md2;
-      gradcolors[j*3+2] += -nr[2]*md2;
-
-      laplcolors[i] += md*laplWpoly6(magr);
-      laplcolors[j] += md*laplWpoly6(magr);
-    }
-#endif
-    vecNormalize(&gradcolors[i*3], &gradcolors[i*3]);
-
-    float tmp = -surfTension*laplcolors[i];
-
-    f_total[i*3+0] += tmp*gradcolors[i*3+0];
-    f_total[i*3+1] += tmp*gradcolors[i*3+1];
-    f_total[i*3+2] += tmp*gradcolors[i*3+2];
   }
-#endif//ITERATE_CELLS
 
   delete [] gradcolors;
   delete [] laplcolors;
