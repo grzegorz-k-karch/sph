@@ -134,19 +134,20 @@ void initParticles(float** particles, float** velocities, int numParticles)
   const int gridSize = std::ceil(tankSize/cellSize);
   int nx = gridSize;
   int nxy = gridSize*gridSize;
-  cellOffsets[0]  =  1;            // + , 0 , 0 ( 1) 
-  cellOffsets[1]  = -1 + nx;       // - , + , 0 ( 2)
-  cellOffsets[2]  =    + nx;       // 0 , + , 0 ( 3)
-  cellOffsets[3]  =  1 + nx;       // + , + , 0 ( 4)
-  cellOffsets[4]  = -1 - nx + nxy; // - , - , + ( 5) 
-  cellOffsets[5]  =    - nx + nxy; // 0 , - , + ( 6)
-  cellOffsets[6]  =  1 - nx + nxy; // + , - , + ( 7)
-  cellOffsets[7]  = -1      + nxy; // - , 0 , + ( 8)
-  cellOffsets[8]  =         + nxy; // 0 , 0 , + ( 9)
-  cellOffsets[9]  =  1      + nxy; // + , 0 , + (10)
-  cellOffsets[10] = -1 + nx + nxy; // - , 0 , + (11)
-  cellOffsets[11] =      nx + nxy; // 0 , + , + (12)
-  cellOffsets[12] =  1 + nx + nxy; // + , + , + (13)
+  cellOffsets[0]  =  0;            // 0 , 0 , 0 ( 0) 
+  cellOffsets[1]  =  1;            // + , 0 , 0 ( 1) 
+  cellOffsets[2]  = -1 + nx;       // - , + , 0 ( 2)
+  cellOffsets[3]  =    + nx;       // 0 , + , 0 ( 3)
+  cellOffsets[4]  =  1 + nx;       // + , + , 0 ( 4)
+  cellOffsets[5]  = -1 - nx + nxy; // - , - , + ( 5) 
+  cellOffsets[6]  =    - nx + nxy; // 0 , - , + ( 6)
+  cellOffsets[7]  =  1 - nx + nxy; // + , - , + ( 7)
+  cellOffsets[8]  = -1      + nxy; // - , 0 , + ( 8)
+  cellOffsets[9]  =         + nxy; // 0 , 0 , + ( 9)
+  cellOffsets[10]  =  1      + nxy; // + , 0 , + (10)
+  cellOffsets[11] = -1 + nx + nxy; // - , 0 , + (11)
+  cellOffsets[12] =      nx + nxy; // 0 , + , + (12)
+  cellOffsets[13] =  1 + nx + nxy; // + , + , + (13)
 #endif
 }
 #if USE_GRID
@@ -206,50 +207,20 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 #if 1
   for (int c = 0; c < numCells; c++) {
 
-    if (plists[c].empty()) {
-      continue;
-    }
     for (int& i : plists[c]) {
 
       float *ri = &particles[i*3];
-#if SINGLE_PASS
       densities[i] += own_rho;
-#endif
-      for (int& j : plists[c]) {
 
-#if SINGLE_PASS
-	if (j <= i) {
-	  continue;
-	}
-#endif
-	float *rj = &particles[j*3];
-	float r[3] = {(ri[0]-rj[0]), 
-		      (ri[1]-rj[1]), 
-		      (ri[2]-rj[2])};
-	float r2 = r[0]*r[0]+r[1]*r[1]+r[2]*r[2];
-	float magr = std::sqrt(r2);
-	float rho = m*Wpoly6(magr);
-
-	densities[i] += rho;
-#if SINGLE_PASS
-	densities[j] += rho; 
-#endif
-      }
-
-      for (int k = 0; k < 13; k++) {
+      for (int k = 0; k < 14; k++) {
 
 	int cellId = c + cellOffsets[k];
-
-	if (cellId >= numCells) {
-	  continue;
-	}
-
-	if (plists[cellId].empty()) {
-	  continue;
-	}
-
+	if (cellId >= numCells) continue;
+	
 	for (int& j : plists[cellId]) {
 
+	  if (k == 0 && j <= i) continue;
+	  
 	  float *rj = &particles[j*3];
 	  float r[3] = {(ri[0]-rj[0]), 
 			(ri[1]-rj[1]), 
@@ -259,6 +230,7 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 	  float rho = m*Wpoly6(magr);
 
 	  densities[i] += rho;
+	  densities[j] += rho;
 	}
       }
     }
