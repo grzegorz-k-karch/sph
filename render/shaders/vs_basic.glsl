@@ -19,7 +19,8 @@ void main ()
   vec4 worldPos = model_mat*vec4(in_position.xyz+in_disp, 1.0);
   gl_Position = proj_mat*view_mat*worldPos;
 
-  out_color = normalize(vec3(float(gl_InstanceID)/2000.0,1.0,1.0));
+  //out_color = normalize(vec3(float(gl_InstanceID)/2000.0,1.0,1.0));
+  out_color = vec3(0.2, 0.6, 0.9);
 
   vec3 lightPos = vec3(10.0, 10.0, 10.0);
 

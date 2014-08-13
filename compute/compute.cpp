@@ -108,8 +108,7 @@ float laplWpoly6(const float r)
   return w;
 }
 
-void initParticles(float** particles, float** velocities, 
-		   int numParticles)
+void initParticles(float** particles, float** velocities, int numParticles)
 {
   h2 = h*h;
   h6 = h2*h2*h2;
@@ -204,6 +203,67 @@ void updateParticles(float* particles, float* velocities, int numParticles)
   const int numCells = gridSize*gridSize*gridSize;
 #endif
 
+#if 1
+  for (int c = 0; c < numCells; c++) {
+
+    if (plists[c].empty()) {
+      continue;
+    }
+    for (int& i : plists[c]) {
+
+      float *ri = &particles[i*3];
+#if SINGLE_PASS
+      densities[i] += own_rho;
+#endif
+      for (int& j : plists[c]) {
+
+#if SINGLE_PASS
+	if (j <= i) {
+	  continue;
+	}
+#endif
+	float *rj = &particles[j*3];
+	float r[3] = {(ri[0]-rj[0]), 
+		      (ri[1]-rj[1]), 
+		      (ri[2]-rj[2])};
+	float r2 = r[0]*r[0]+r[1]*r[1]+r[2]*r[2];
+	float magr = std::sqrt(r2);
+	float rho = m*Wpoly6(magr);
+
+	densities[i] += rho;
+#if SINGLE_PASS
+	densities[j] += rho; 
+#endif
+      }
+
+      for (int k = 0; k < 13; k++) {
+
+	int cellId = c + cellOffsets[k];
+
+	if (cellId >= numCells) {
+	  continue;
+	}
+
+	if (plists[cellId].empty()) {
+	  continue;
+	}
+
+	for (int& j : plists[cellId]) {
+
+	  float *rj = &particles[j*3];
+	  float r[3] = {(ri[0]-rj[0]), 
+			(ri[1]-rj[1]), 
+			(ri[2]-rj[2])};
+	  float r2 = r[0]*r[0]+r[1]*r[1]+r[2]*r[2];
+	  float magr = std::sqrt(r2);
+	  float rho = m*Wpoly6(magr);
+
+	  densities[i] += rho;
+	}
+      }
+    }
+  }
+#else
 #if ITERATE_CELLS
   for (int c = 0; c < numCells; c++) {
 
@@ -346,7 +406,7 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 #endif
   }
 #endif
-
+#endif
   static int testStep = 1;
   static int done = 0;
 
