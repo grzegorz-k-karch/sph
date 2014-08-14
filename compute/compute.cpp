@@ -27,22 +27,7 @@ float h6 = 0.0f;
 
 int cellOffsets[13];
 
-typedef struct {
-  float x;
-  float y;
-  float z;
-} float3;
-
 std::vector<std::forward_list<int> > plists;
-
-static int omp_thread_count() 
-{
-  int n = 0;
-#pragma omp parallel reduction(+:n)
-  n += 1;
-  return n;
-}
-
 
 float vecLength(const float* a)
 {
