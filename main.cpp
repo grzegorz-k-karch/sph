@@ -11,7 +11,7 @@ float *velocities = 0;
 
 extern float tankSize;
 
-int omp_thread_count() 
+static int omp_thread_count() 
 {
   int n = 0;
 #pragma omp parallel reduction(+:n)
@@ -21,6 +21,8 @@ int omp_thread_count()
 
 int main()
 {
+  std::cout << "NTHREADS = " << omp_thread_count() << std::endl;
+
   initOpenGL();
   initGeometry();
 
