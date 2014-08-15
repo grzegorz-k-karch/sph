@@ -14,6 +14,12 @@ fluid parameters taken from
 parameters adjusted according to the fluids_v1 program:
  * http://www.rchoetzlein.com/eng/graphics/fluids.htm
 
+optimization based on
+https://software.intel.com/en-us/articles/fluid-simulation-for-video-games-part-15
+and probably on
+http://www.jontse.com/courses/files/cornell/cs5220/project02_sph.pdf
+
+
 further materials:
  * https://www.youtube.com/watch?v=SQPCXzqH610
  * http://image.diku.dk/projects/media/kelager.06.pdf
