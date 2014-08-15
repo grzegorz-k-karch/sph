@@ -114,7 +114,7 @@ void initParticles(float** particles, float** velocities, int numParticles)
     (*velocities)[i*3+2] = 0.0f;
   }
 
-  const float cellSize = h;
+  const float cellSize = h*1.01f;
   const int gridSize = std::ceil(tankSize/cellSize);
   int nx = gridSize;
   int nxy = gridSize*gridSize;
@@ -136,7 +136,7 @@ void initParticles(float** particles, float** velocities, int numParticles)
 
 void assignParticlesToCells(float* particles, int numParticles)
 {
-  const float cellSize = h;
+  const float cellSize = h*1.01f;
   const int gridSize = std::ceil(tankSize/cellSize);
   const int numCells = gridSize*gridSize*gridSize;
 
@@ -178,7 +178,7 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 
   float own_rho = m*Wpoly6(0.0f);
 
-  const float cellSize = h;
+  const float cellSize = h*1.01f;
   const int gridSize = std::ceil(tankSize/cellSize);
   const int numCells = gridSize*gridSize*gridSize;
 #if PARALLEL_SLABS
@@ -192,6 +192,8 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 
       for (int& i : plists[c]) {
 
+	float densityi = 0.0f;
+
 	float *ri = &particles[i*3];
 	densities[i] += own_rho;
 
@@ -213,10 +215,12 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 	    if (magr > h) continue;
 	    float rho = m*Wpoly6(magr);
 
-	    densities[i] += rho;
+	    // densities[i] += rho;
+	    densityi += rho;
 	    densities[j] += rho;
 	  }
 	}
+	densities[i] += densityi;
       }
     }    
   }
@@ -228,6 +232,8 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 
       for (int& i : plists[c]) {
 
+	float densityi = 0.0f;
+
 	float *ri = &particles[i*3];
 	densities[i] += own_rho;
 
@@ -249,10 +255,12 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 	    if (magr > h) continue;
 	    float rho = m*Wpoly6(magr);
 
-	    densities[i] += rho;
+	    // densities[i] += rho;
+	    densityi += rho;
 	    densities[j] += rho;
 	  }
 	}
+	densities[i] += densityi;
       }
     }    
   }
