@@ -50,9 +50,7 @@ int main()
     std::cout << "elapsed time [us]: " << useconds << std::endl;
   }
 
-  if (particles != 0) {
-    free(particles);
-  }
+  deleteParticles(&particles, &velocities);
 
   terminateOpenGL();
 
