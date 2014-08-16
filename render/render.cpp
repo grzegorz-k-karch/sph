@@ -16,8 +16,8 @@
 #include <iostream> 
 
 GLFWwindow *window;
-GLint windowWidth = 6;
-GLint windowHeight = 4;
+GLint windowWidth = 600;
+GLint windowHeight = 400;
 
 GLfloat curquat[4];
 GLfloat lastquat[4];

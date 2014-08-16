@@ -5,7 +5,7 @@
 #include "compute.h"
 #include "render.h"
 
-int numParticles = 5000;
+int numParticles = 15000;
 float *particles = 0;
 float *velocities = 0;
 
@@ -23,8 +23,8 @@ int main()
 {
   std::cout << "NTHREADS = " << omp_thread_count() << std::endl;
 
-  initOpenGL();
-  initGeometry();
+  // initOpenGL();
+  // initGeometry();
 
   initParticles(&particles, &velocities, numParticles);
 
@@ -40,7 +40,7 @@ int main()
     gettimeofday(&start, 0);
 
     updateParticles(particles, velocities, numParticles);
-    closeWindow = display(particles, numParticles);
+    //    closeWindow = display(particles, numParticles);
 
     // t = clock() - t;
     // std::cout << "elapsed time: " << float(t)/CLOCKS_PER_SEC << std::endl;
@@ -52,7 +52,7 @@ int main()
 
   deleteParticles(&particles, &velocities);
 
-  terminateOpenGL();
+  // terminateOpenGL();
 
   return 0;
 }

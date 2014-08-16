@@ -196,6 +196,9 @@ void assignParticlesToCells(float* particles, float* velocities, int numParticle
   const int gridSize = std::ceil(tankSize/cellSize);
   const int numCells = gridSize*gridSize*gridSize;
 
+  for (int i = 0; i < plists.size(); i++) {
+    plists[i].clear();
+  }
   plists.clear();
   plists.resize(numCells);
 
@@ -1155,14 +1158,16 @@ void updateParticles(float* particles, float* velocities, int numParticles)
   for (int i = 0; i < plists.size(); i++) {
     for (int j = 0; j < plists[i].size(); j++) {
 
-      float *particle = &particles[i*3];
+      int idx = plists[i][j].idx;
+
+      float *particle = &particles[idx*3];
       float sc = timestep/plists[i][j].rho;
 
-      float *velocity = &velocities[i*3];
+      float *velocity = &velocities[idx*3];
     
       velocity[0] += plists[i][j].fx*sc;
-      velocity[1] += plists[i][j].fx*sc;
-      velocity[2] += plists[i][j].fx*sc;
+      velocity[1] += plists[i][j].fy*sc;
+      velocity[2] += plists[i][j].fz*sc;
 
       particle[0] = particle[0] + velocity[0]*timestep;
       particle[1] = particle[1] + velocity[1]*timestep;
