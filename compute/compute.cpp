@@ -9,16 +9,6 @@
 
 #include "compute.h"
 
-#define PARALLEL_SLABS 1
-#define USE_COPIES 1
-
-#if !USE_COPIES
-float *f_total;
-float *densities;
-float *gradcolors;
-float *laplcolors;
-#endif
-
 float soundSpeed = 1.0f;
 float m = 0.00020543f;
 float rho0 = 600.0f;
@@ -26,7 +16,7 @@ float dynVisc = 0.2f;
 float a_gravity[3] = {0.0f, -10.0f, 0.0f};
 float timestep = 0.005f;
 float tankSize = 0.2154f;
-float surfTension = 0.0378f;//0.0728f;
+float surfTension = 0.0189f;//378f;//0.0728f;
 
 float h = 0.01f;
 float h9 = 0.0f;
@@ -35,7 +25,6 @@ float h6 = 0.0f;
 
 int cellOffsets[13];
 
-#if USE_COPIES
 typedef struct {
   float x;
   float y;
@@ -58,13 +47,8 @@ typedef struct {
   float lc;
 
 } particle_t;
-#endif
 
-#if USE_COPIES
 std::vector<std::vector<particle_t> > plists;
-#else
-std::vector<std::forward_list<int> > plists;
-#endif
 
 float vecLength(const float* a)
 {
@@ -138,12 +122,6 @@ void initParticles(float** particles, float** velocities, int numParticles)
 
   *particles = new float[numParticles*3];
   *velocities = new float[numParticles*3];
-#if !USE_COPIES
-  f_total = new float[numParticles*3];
-  densities = new float[numParticles];
-  gradcolors = new float[numParticles*3];
-  laplcolors = new float[numParticles];
-#endif
 
   srand(0);
 
@@ -182,12 +160,6 @@ void deleteParticles(float** particles, float** velocities)
 {
   delete [] *particles;
   delete [] *velocities;
-#if !USE_COPIES
-  delete [] f_total;
-  delete [] densities;
-  delete [] gradcolors;
-  delete [] laplcolors;
-#endif
 }
 
 void assignParticlesToCells(float* particles, float* velocities, int numParticles)
@@ -213,16 +185,12 @@ void assignParticlesToCells(float* particles, float* velocities, int numParticle
       cellCoords[1]*gridSize + 
       cellCoords[2]*gridSize*gridSize;
 
-#if USE_COPIES
     float *velo = &velocities[i*3];
     particle_t particle = {pos[0], pos[1], pos[2], i, 
 			   velo[0], velo[1], velo[2], 0.0f,
 			   0.0f, 0.0f, 0.0f, 0.0f,
 			   0.0f, 0.0f, 0.0f, 0.0f};
     plists[cellId].push_back(particle);
-#else
-    plists[cellId].push_front(i);
-#endif
   }      
 }
 
@@ -230,25 +198,12 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 {
   assignParticlesToCells(particles, velocities, numParticles);
 
-#if !USE_COPIES
-#pragma omp parallel for 
-  for (int i = 0; i < numParticles*3; i++) {
-    f_total[i] = 0.0f;
-  }
-#endif
   // compute density for each particle-----------------------------------------
-#if !USE_COPIES
-#pragma omp parallel for 
-  for (int i = 0; i < numParticles; i++) {
-    densities[i] = 0.0f;
-  }
-#endif
   float own_rho = m*Wpoly6(0.0f);
 
   const float cellSize = h*1.01f;
   const int gridSize = std::ceil(tankSize/cellSize);
   const int numCells = gridSize*gridSize*gridSize;
-#if PARALLEL_SLABS
   const int numCellsInSlab = gridSize*gridSize;
 
 #pragma omp parallel for 
@@ -256,7 +211,7 @@ void updateParticles(float* particles, float* velocities, int numParticles)
     for (int s = 0; s < numCellsInSlab; s++) {
 
       int c = s + z*numCellsInSlab;
-#if USE_COPIES
+
       for (particle_t& ri: plists[c]) {
 
 	int i = ri.idx;
@@ -290,40 +245,6 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 	}
 	ri.rho += densityi;
       }
-#else
-      for (int& i : plists[c]) {
-
-	float densityi = 0.0f;
-
-	float *ri = &particles[i*3];
-	densities[i] += own_rho;
-
-	for (int k = 0; k < 14; k++) {
-
-	  int cellId = c + cellOffsets[k];
-	  if (cellId >= numCells) continue;
-	
-	  for (int& j : plists[cellId]) {
-
-	    if (k == 0 && j >= i) continue;
-	  
-	    float *rj = &particles[j*3];
-	    float r[3] = {(ri[0]-rj[0]), 
-			  (ri[1]-rj[1]), 
-			  (ri[2]-rj[2])};
-	    float r2 = r[0]*r[0]+r[1]*r[1]+r[2]*r[2];
-	    float magr = std::sqrt(r2);
-	    if (magr > h) continue;
-	    float rho = m*Wpoly6(magr);
-
-	    // densities[i] += rho;
-	    densityi += rho;
-	    densities[j] += rho;
-	  }
-	}
-	densities[i] += densityi;
-      }
-#endif
     }    
   }
 #pragma omp parallel for 
@@ -331,7 +252,7 @@ void updateParticles(float* particles, float* velocities, int numParticles)
     for (int s = 0; s < numCellsInSlab; s++) {
 
       int c = s + z*numCellsInSlab;
-#if USE_COPIES
+
       for (particle_t& ri: plists[c]) {
 
 	int i = ri.idx;
@@ -365,96 +286,18 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 	}
 	ri.rho += densityi;
       }
-#else
-      for (int& i : plists[c]) {
-
-	float densityi = 0.0f;
-
-	float *ri = &particles[i*3];
-	densities[i] += own_rho;
-
-	for (int k = 0; k < 14; k++) {
-
-	  int cellId = c + cellOffsets[k];
-	  if (cellId >= numCells) continue;
-	
-	  for (int& j : plists[cellId]) {
-
-	    if (k == 0 && j >= i) continue;
-	  
-	    float *rj = &particles[j*3];
-	    float r[3] = {(ri[0]-rj[0]), 
-			  (ri[1]-rj[1]), 
-			  (ri[2]-rj[2])};
-	    float r2 = r[0]*r[0]+r[1]*r[1]+r[2]*r[2];
-	    float magr = std::sqrt(r2);
-	    if (magr > h) continue;
-	    float rho = m*Wpoly6(magr);
-
-	    // densities[i] += rho;
-	    densityi += rho;
-	    densities[j] += rho;
-	  }
-	}
-	densities[i] += densityi;
-      }
-#endif
     }    
   }
-#else
-  for (int c = 0; c < numCells; c++) {
-    for (int& i : plists[c]) {
-
-      float *ri = &particles[i*3];
-      densities[i] += own_rho;
-
-      for (int k = 0; k < 14; k++) {
-
-  	int cellId = c + cellOffsets[k];
-  	if (cellId >= numCells) continue;
-	
-  	for (int& j : plists[cellId]) {
-
-  	  if (k == 0 && j >= i) continue;
-	  
-  	  float *rj = &particles[j*3];
-  	  float r[3] = {(ri[0]-rj[0]), 
-  			(ri[1]-rj[1]), 
-  			(ri[2]-rj[2])};
-  	  float r2 = r[0]*r[0]+r[1]*r[1]+r[2]*r[2];
-  	  float magr = std::sqrt(r2);
-  	  if (magr > h) continue;
-  	  float rho = m*Wpoly6(magr);
-
-  	  densities[i] += rho;
-  	  densities[j] += rho;
-  	}
-      }
-    }
-  }
-#endif
-  static int testStep = 1;
-  static int done = 0;
-
-  if (done == testStep) {
-#if USE_COPIES
-
-#else
-    std::cout << "densities[0] = " << densities[0] << std::endl;
-#endif
-  }
-  done++;
 
   // pressure-----------------------------------------------------------------
   float cs = soundSpeed*soundSpeed;
 
-#if PARALLEL_SLABS
 #pragma omp parallel for 
   for (int z = 0; z < gridSize; z+=2) {    
     for (int s = 0; s < numCellsInSlab; s++) {      
 
       int c = s + z*numCellsInSlab;
-#if USE_COPIES
+
       for (particle_t& ri : plists[c]) {
 	
 	int i = ri.idx;
@@ -493,46 +336,6 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 	  }
 	}
       }
-#else
-      for (int& i : plists[c]) {
-	
-	float *ri = &particles[i*3];
-	float pi = cs*(densities[i]-rho0);
-
-	for (int k = 0; k < 14; k++) {
-
-	  int cellId = c + cellOffsets[k];
-	  if (cellId >= numCells) continue;
-	
-	  for (int& j : plists[cellId]) {
-
-	    if (k == 0 && j >= i) continue;
-
-	    float *rj = &particles[j*3];
-	    float pj = cs*(densities[j]-rho0);
-      
-	    float r[3] = {(ri[0]-rj[0]), 
-			  (ri[1]-rj[1]), 
-			  (ri[2]-rj[2])};
-	    float magr = std::sqrt(r[0]*r[0]+r[1]*r[1]+r[2]*r[2]);
-	    if (magr > h) continue;
-	    float mfp = -m*(pi+pj)/(densities[i]+densities[j])*gradWspiky(magr);
-	    // FROM FLUIDS: (does not work well)
-	    // float mfp = -m*(pi+pj)/(densities[i]*densities[j])*gradWspiky(magr);
-
-	    vecNormalize(r,r);
-
-	    f_total[i*3+0] += mfp*r[0];
-	    f_total[i*3+1] += mfp*r[1];
-	    f_total[i*3+2] += mfp*r[2];
-
-	    f_total[j*3+0] += -mfp*r[0];
-	    f_total[j*3+1] += -mfp*r[1];
-	    f_total[j*3+2] += -mfp*r[2];
-	  }
-	}
-      }
-#endif
     }
   }
 #pragma omp parallel for 
@@ -540,7 +343,7 @@ void updateParticles(float* particles, float* velocities, int numParticles)
     for (int s = 0; s < numCellsInSlab; s++) {      
 
       int c = s + z*numCellsInSlab;
-#if USE_COPIES
+
       for (particle_t& ri : plists[c]) {
 	
 	int i = ri.idx;
@@ -579,98 +382,16 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 	  }
 	}
       }
-#else
-      for (int& i : plists[c]) {
-	
-	float *ri = &particles[i*3];
-	float pi = cs*(densities[i]-rho0);
-
-	for (int k = 0; k < 14; k++) {
-
-	  int cellId = c + cellOffsets[k];
-	  if (cellId >= numCells) continue;
-	
-	  for (int& j : plists[cellId]) {
-
-	    if (k == 0 && j >= i) continue;
-
-	    float *rj = &particles[j*3];
-	    float pj = cs*(densities[j]-rho0);
-      
-	    float r[3] = {(ri[0]-rj[0]), 
-			  (ri[1]-rj[1]), 
-			  (ri[2]-rj[2])};
-	    float magr = std::sqrt(r[0]*r[0]+r[1]*r[1]+r[2]*r[2]);
-	    if (magr > h) continue;
-	    float mfp = -m*(pi+pj)/(densities[i]+densities[j])*gradWspiky(magr);
-	    // FROM FLUIDS: (does not work well)
-	    // float mfp = -m*(pi+pj)/(densities[i]*densities[j])*gradWspiky(magr);
-
-	    vecNormalize(r,r);
-
-	    f_total[i*3+0] += mfp*r[0];
-	    f_total[i*3+1] += mfp*r[1];
-	    f_total[i*3+2] += mfp*r[2];
-
-	    f_total[j*3+0] += -mfp*r[0];
-	    f_total[j*3+1] += -mfp*r[1];
-	    f_total[j*3+2] += -mfp*r[2];
-	  }
-	}
-      }
-#endif
     }
   }
-#else
-  for (int c = 0; c < numCells; c++) {
-    for (int& i : plists[c]) {
-	
-      float *ri = &particles[i*3];
-      float pi = cs*(densities[i]-rho0);
 
-      for (int k = 0; k < 14; k++) {
-
-	int cellId = c + cellOffsets[k];
-	if (cellId >= numCells) continue;
-	
-	for (int& j : plists[cellId]) {
-
-	  if (k == 0 && j >= i) continue;
-
-	  float *rj = &particles[j*3];
-	  float pj = cs*(densities[j]-rho0);
-      
-	  float r[3] = {(ri[0]-rj[0]), 
-			(ri[1]-rj[1]), 
-			(ri[2]-rj[2])};
-	  float magr = std::sqrt(r[0]*r[0]+r[1]*r[1]+r[2]*r[2]);
-	  if (magr > h) continue;
-	  float mfp = -m*(pi+pj)/(densities[i]+densities[j])*gradWspiky(magr);
-	  // FROM FLUIDS: (does not work well)
-	  // float mfp = -m*(pi+pj)/(densities[i]*densities[j])*gradWspiky(magr);
-
-	  vecNormalize(r,r);
-
-	  f_total[i*3+0] += mfp*r[0];
-	  f_total[i*3+1] += mfp*r[1];
-	  f_total[i*3+2] += mfp*r[2];
-
-	  f_total[j*3+0] += -mfp*r[0];
-	  f_total[j*3+1] += -mfp*r[1];
-	  f_total[j*3+2] += -mfp*r[2];
-	}
-      }
-    }
-  }
-#endif
   // visocity------------------------------------------------------------------
-#if PARALLEL_SLABS
 #pragma omp parallel for 
   for (int z = 0; z < gridSize; z+=2) {    
     for (int s = 0; s < numCellsInSlab; s++) {      
 
       int c = s + z*numCellsInSlab;
-#if USE_COPIES
+
       for (particle_t& ri : plists[c]) {
 
 	int i = ri.idx;
@@ -705,43 +426,6 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 	  }
 	}
       }
-#else
-      for (int& i : plists[c]) {
-	
-	float *ri = &particles[i*3];
-	float *vi = &velocities[i*3];
-	float fviscosity[3] = {0.0f, 0.0f, 0.0f};
-
-	for (int k = 0; k < 14; k++) {
-
-	  int cellId = c + cellOffsets[k];
-	  if (cellId >= numCells) continue;
-	
-	  for (int& j : plists[cellId]) {
-
-	    if (k == 0 && j >= i) continue;
-
-	    float *rj = &particles[j*3];
-	    float *vj = &velocities[j*3];
-	    float vdiff[3] = {vj[0]-vi[0], vj[1]-vi[1], vj[2]-vi[2]};
-	    float r[3] = {(ri[0]-rj[0]), 
-			  (ri[1]-rj[1]), 
-			  (ri[2]-rj[2])};
-	    float magr = std::sqrt(r[0]*r[0]+r[1]*r[1]+r[2]*r[2]);
-	    if (magr > h) continue;
-	    float tmp = dynVisc*m*laplWviscosity(magr)*2.0f/(densities[i]+densities[j]);
-
-	    f_total[i*3+0] += vdiff[0]*tmp;
-	    f_total[i*3+1] += vdiff[1]*tmp;
-	    f_total[i*3+2] += vdiff[2]*tmp;
-
-	    f_total[j*3+0] += -vdiff[0]*tmp;
-	    f_total[j*3+1] += -vdiff[1]*tmp;
-	    f_total[j*3+2] += -vdiff[2]*tmp;
-	  }
-	}
-      }
-#endif
     }
   }
 #pragma omp parallel for
@@ -749,7 +433,7 @@ void updateParticles(float* particles, float* velocities, int numParticles)
     for (int s = 0; s < numCellsInSlab; s++) {      
 
       int c = s + z*numCellsInSlab;
-#if USE_COPIES
+
       for (particle_t& ri : plists[c]) {
 
 	int i = ri.idx;
@@ -784,86 +468,9 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 	  }
 	}
       }
-#else
-      for (int& i : plists[c]) {
-	
-	float *ri = &particles[i*3];
-	float *vi = &velocities[i*3];
-	float fviscosity[3] = {0.0f, 0.0f, 0.0f};
-
-	for (int k = 0; k < 14; k++) {
-
-	  int cellId = c + cellOffsets[k];
-	  if (cellId >= numCells) continue;
-	
-	  for (int& j : plists[cellId]) {
-
-	    if (k == 0 && j >= i) continue;
-
-	    float *rj = &particles[j*3];
-	    float *vj = &velocities[j*3];
-	    float vdiff[3] = {vj[0]-vi[0], vj[1]-vi[1], vj[2]-vi[2]};
-	    float r[3] = {(ri[0]-rj[0]), 
-			  (ri[1]-rj[1]), 
-			  (ri[2]-rj[2])};
-	    float magr = std::sqrt(r[0]*r[0]+r[1]*r[1]+r[2]*r[2]);
-	    if (magr > h) continue;
-	    float tmp = dynVisc*m*laplWviscosity(magr)*2.0f/(densities[i]+densities[j]);
-
-	    f_total[i*3+0] += vdiff[0]*tmp;
-	    f_total[i*3+1] += vdiff[1]*tmp;
-	    f_total[i*3+2] += vdiff[2]*tmp;
-
-	    f_total[j*3+0] += -vdiff[0]*tmp;
-	    f_total[j*3+1] += -vdiff[1]*tmp;
-	    f_total[j*3+2] += -vdiff[2]*tmp;
-	  }
-	}
-      }
-#endif
     }
   }
-#else
-  for (int c = 0; c < numCells; c++) {
-    for (int& i : plists[c]) {
-	
-      float *ri = &particles[i*3];
-      float *vi = &velocities[i*3];
-      float fviscosity[3] = {0.0f, 0.0f, 0.0f};
-
-      for (int k = 0; k < 14; k++) {
-
-	int cellId = c + cellOffsets[k];
-	if (cellId >= numCells) continue;
-	
-	for (int& j : plists[cellId]) {
-
-	  if (k == 0 && j >= i) continue;
-
-	  float *rj = &particles[j*3];
-	  float *vj = &velocities[j*3];
-	  float vdiff[3] = {vj[0]-vi[0], vj[1]-vi[1], vj[2]-vi[2]};
-	  float r[3] = {(ri[0]-rj[0]), 
-			(ri[1]-rj[1]), 
-			(ri[2]-rj[2])};
-	  float magr = std::sqrt(r[0]*r[0]+r[1]*r[1]+r[2]*r[2]);
-	  if (magr > h) continue;
-	  float tmp = dynVisc*m*laplWviscosity(magr)*2.0f/(densities[i]+densities[j]);
-
-	  f_total[i*3+0] += vdiff[0]*tmp;
-	  f_total[i*3+1] += vdiff[1]*tmp;
-	  f_total[i*3+2] += vdiff[2]*tmp;
-
-	  f_total[j*3+0] += -vdiff[0]*tmp;
-	  f_total[j*3+1] += -vdiff[1]*tmp;
-	  f_total[j*3+2] += -vdiff[2]*tmp;
-	}
-      }
-    }
-  }
-#endif
   // gravity-------------------------------------------------------------------
-#if USE_COPIES
   for (int i = 0; i < plists.size(); i++) {
     for (int j = 0; j < plists[i].size(); j++) {
       plists[i][j].fx += a_gravity[0]*plists[i][j].rho;
@@ -871,33 +478,13 @@ void updateParticles(float* particles, float* velocities, int numParticles)
       plists[i][j].fz += a_gravity[2]*plists[i][j].rho;
     }
   }
-#else
-#pragma omp parallel for
-  for (int i = 0; i < numParticles; i++) {
-
-    f_total[i*3+0] += a_gravity[0]*densities[i];
-    f_total[i*3+1] += a_gravity[1]*densities[i];
-    f_total[i*3+2] += a_gravity[2]*densities[i];    
-  }
-#endif
   // surface tension-----------------------------------------------------------
-#if !USE_COPIES
-#pragma omp parallel for
-  for (int i = 0; i < numParticles; i++) {
-    gradcolors[i*3+0] = 0.0f;
-    gradcolors[i*3+1] = 0.0f;
-    gradcolors[i*3+2] = 0.0f;
-    laplcolors[i] = 0.0f;
-  }
-#endif
-
-#if PARALLEL_SLABS
 #pragma omp parallel for 
   for (int z = 0; z < gridSize; z+=2) {    
     for (int s = 0; s < numCellsInSlab; s++) {      
 
       int c = s + z*numCellsInSlab;
-#if USE_COPIES
+
       for (particle_t& ri: plists[c]) {
 	
 	int i = ri.idx;
@@ -940,49 +527,6 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 	  }
 	}
       }
-#else
-      for (int& i : plists[c]) {
-
-	float *ri = &particles[i*3];
-
-	for (int k = 0; k < 14; k++) {
-
-	  int cellId = c + cellOffsets[k];
-	  if (cellId >= numCells) continue;
-	
-	  for (int& j : plists[cellId]) {
-
-	    if (k == 0 && j >= i) continue;
-
-	    float *rj = &particles[j*3];
-	    float r[3] = {(ri[0]-rj[0]), 
-			  (ri[1]-rj[1]), 
-			  (ri[2]-rj[2])};
-	    float r2 = r[0]*r[0]+r[1]*r[1]+r[2]*r[2];
-	    float magr = std::sqrt(r2);
-	    if (magr > h) continue;
-	    float md = m*2.0f/(densities[i]+densities[j]);
-	    float maggradcolor = gradWpoly6(magr);
-	    float nr[3];
-
-	    vecNormalize(r, nr);
-	    nr[0] *= maggradcolor;
-	    nr[1] *= maggradcolor;
-	    nr[2] *= maggradcolor;
-
-	    gradcolors[i*3+0] += nr[0]*md;
-	    gradcolors[i*3+1] += nr[1]*md;
-	    gradcolors[i*3+2] += nr[2]*md;
-	    laplcolors[i] += md*laplWpoly6(magr);
-
-	    gradcolors[j*3+0] += -nr[0]*md;
-	    gradcolors[j*3+1] += -nr[1]*md;
-	    gradcolors[j*3+2] += -nr[2]*md;
-	    laplcolors[j] += md*laplWpoly6(magr);
-	  }
-	}	
-      }
-#endif
     }
   }
 #pragma omp parallel for 
@@ -990,7 +534,7 @@ void updateParticles(float* particles, float* velocities, int numParticles)
     for (int s = 0; s < numCellsInSlab; s++) {      
 
       int c = s + z*numCellsInSlab;
-#if USE_COPIES
+
       for (particle_t& ri: plists[c]) {
 	
 	int i = ri.idx;
@@ -1033,98 +577,9 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 	  }
 	}
       }
-#else
-      for (int& i : plists[c]) {
-
-	float *ri = &particles[i*3];
-
-	for (int k = 0; k < 14; k++) {
-
-	  int cellId = c + cellOffsets[k];
-	  if (cellId >= numCells) continue;
-	
-	  for (int& j : plists[cellId]) {
-
-	    if (k == 0 && j >= i) continue;
-
-	    float *rj = &particles[j*3];
-	    float r[3] = {(ri[0]-rj[0]), 
-			  (ri[1]-rj[1]), 
-			  (ri[2]-rj[2])};
-	    float r2 = r[0]*r[0]+r[1]*r[1]+r[2]*r[2];
-	    float magr = std::sqrt(r2);
-	    if (magr > h) continue;
-	    float md = m*2.0f/(densities[i]+densities[j]);
-	    float maggradcolor = gradWpoly6(magr);
-	    float nr[3];
-
-	    vecNormalize(r, nr);
-	    nr[0] *= maggradcolor;
-	    nr[1] *= maggradcolor;
-	    nr[2] *= maggradcolor;
-
-	    gradcolors[i*3+0] += nr[0]*md;
-	    gradcolors[i*3+1] += nr[1]*md;
-	    gradcolors[i*3+2] += nr[2]*md;
-	    laplcolors[i] += md*laplWpoly6(magr);
-
-	    gradcolors[j*3+0] += -nr[0]*md;
-	    gradcolors[j*3+1] += -nr[1]*md;
-	    gradcolors[j*3+2] += -nr[2]*md;
-	    laplcolors[j] += md*laplWpoly6(magr);
-	  }
-	}	
-      }
-#endif
     }
   }
-#else
-  for (int c = 0; c < numCells; c++) {
-    for (int& i : plists[c]) {
 
-      float *ri = &particles[i*3];
-
-      for (int k = 0; k < 14; k++) {
-
-	int cellId = c + cellOffsets[k];
-	if (cellId >= numCells) continue;
-	
-	for (int& j : plists[cellId]) {
-
-	  if (k == 0 && j >= i) continue;
-
-	  float *rj = &particles[j*3];
-	  float r[3] = {(ri[0]-rj[0]), 
-			(ri[1]-rj[1]), 
-			(ri[2]-rj[2])};
-	  float r2 = r[0]*r[0]+r[1]*r[1]+r[2]*r[2];
-	  float magr = std::sqrt(r2);
-	  if (magr > h) continue;
-	  float md = m*2.0f/(densities[i]+densities[j]);
-	  float maggradcolor = gradWpoly6(magr);
-	  float nr[3];
-
-	  vecNormalize(r, nr);
-	  nr[0] *= maggradcolor;
-	  nr[1] *= maggradcolor;
-	  nr[2] *= maggradcolor;
-
-	  gradcolors[i*3+0] += nr[0]*md;
-	  gradcolors[i*3+1] += nr[1]*md;
-	  gradcolors[i*3+2] += nr[2]*md;
-	  laplcolors[i] += md*laplWpoly6(magr);
-
-	  gradcolors[j*3+0] += -nr[0]*md;
-	  gradcolors[j*3+1] += -nr[1]*md;
-	  gradcolors[j*3+2] += -nr[2]*md;
-	  laplcolors[j] += md*laplWpoly6(magr);
-	}
-      }	
-    }
-  }
-#endif
-
-#if USE_COPIES
   for (int i = 0; i < plists.size(); i++) {
     for (int j = 0; j < plists[i].size(); j++) {
 
@@ -1140,21 +595,7 @@ void updateParticles(float* particles, float* velocities, int numParticles)
       plists[i][j].fz += tmp*gradcolor[2];  
     }
   }
-#else
-#pragma omp parallel for
-  for (int i = 0; i < numParticles; i++) {
-
-      vecNormalize(&gradcolors[i*3], &gradcolors[i*3]);
-
-      float tmp = -surfTension*laplcolors[i];
-
-      f_total[i*3+0] += tmp*gradcolors[i*3+0];
-      f_total[i*3+1] += tmp*gradcolors[i*3+1];
-      f_total[i*3+2] += tmp*gradcolors[i*3+2];
-  }
-#endif
   // update velocity and advect particles--------------------------------------
-#if USE_COPIES
   for (int i = 0; i < plists.size(); i++) {
     for (int j = 0; j < plists[i].size(); j++) {
 
@@ -1174,24 +615,6 @@ void updateParticles(float* particles, float* velocities, int numParticles)
       particle[2] = particle[2] + velocity[2]*timestep;      
     }
   }
-#else
-#pragma omp parallel for
-  for (int i = 0; i < numParticles; i++) {
-
-    float *particle = &particles[i*3];
-    float sc = timestep/densities[i];
-
-    float *velocity = &velocities[i*3];
-    
-    velocity[0] += f_total[i*3+0]*sc;
-    velocity[1] += f_total[i*3+1]*sc;
-    velocity[2] += f_total[i*3+2]*sc;
-
-    particle[0] = particle[0] + velocity[0]*timestep;
-    particle[1] = particle[1] + velocity[1]*timestep;
-    particle[2] = particle[2] + velocity[2]*timestep;
-  }
-#endif
   // check particles on/behind the boundary------------------------------------
 #pragma omp parallel for
   for (int i = 0; i < numParticles; i++) {

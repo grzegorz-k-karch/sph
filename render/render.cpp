@@ -109,8 +109,8 @@ void createSphere(float radius,
 		  std::vector<unsigned int>& indices, 
 		  std::vector<float>& normals)
 {
-  int stacks = 64;
-  int slices = 64;
+  int stacks = 4;
+  int slices = 4;
 
   for(int i = 0; i <= stacks; i++) {
 
