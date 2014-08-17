@@ -5,7 +5,7 @@
 #include "compute.h"
 #include "render.h"
 
-int numParticles = 5000;
+int numParticles = 50000;
 float *particles = 0;
 float *velocities = 0;
 
@@ -47,7 +47,8 @@ int main()
 
     gettimeofday(&end, 0);
     time_t useconds = (end.tv_sec - start.tv_sec) * 1000000 + (end.tv_usec - start.tv_usec);
-    std::cout << "elapsed time [us]: " << useconds << std::endl;
+    std::cout << "elapsed time [us]: " << useconds << " " 
+	      << "fps: " << 1.0/(useconds/1000000.0) << std::endl;
   }
 
   deleteParticles(&particles, &velocities);
