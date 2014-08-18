@@ -14,7 +14,7 @@ float m = 0.00020543f;
 float rho0 = 600.0f;
 float dynVisc = 0.2f;
 float a_gravity[3] = {0.0f, -10.0f, 0.0f};
-float timestep = 0.005f;
+float timestep = 0.0025f;
 float tankSize = 0.4154f;//0.2154f;
 float surfTension = 0.0189f;//378f;//0.0728f;
 
@@ -194,10 +194,8 @@ void assignParticlesToCells(float* particles, float* velocities, int numParticle
   }      
 }
 
-void updateParticles(float* particles, float* velocities, int numParticles)
+void computeDensity(int z0)
 {
-  assignParticlesToCells(particles, velocities, numParticles);
-
   // compute density for each particle-----------------------------------------
   float own_rho = m*Wpoly6(0.0f);
 
@@ -207,7 +205,7 @@ void updateParticles(float* particles, float* velocities, int numParticles)
   const int numCellsInSlab = gridSize*gridSize;
 
 #pragma omp parallel for 
-  for (int z = 0; z < gridSize; z+=2) {    
+  for (int z = z0; z < gridSize; z+=2) {    
     for (int s = 0; s < numCellsInSlab; s++) {
 
       int c = s + z*numCellsInSlab;
@@ -238,7 +236,6 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 	    if (magr > h) continue;
 	    float rho = m*Wpoly6(magr);
 
-	    // densities[i] += rho;
 	    densityi += rho;
 	    rj.rho += rho;
 	  }
@@ -247,51 +244,19 @@ void updateParticles(float* particles, float* velocities, int numParticles)
       }
     }    
   }
-#pragma omp parallel for 
-  for (int z = 1; z < gridSize; z+=2) {    
-    for (int s = 0; s < numCellsInSlab; s++) {
+}
 
-      int c = s + z*numCellsInSlab;
-
-      for (particle_t& ri: plists[c]) {
-
-	int i = ri.idx;
-	float densityi = 0.0f;
-
-	ri.rho += own_rho;
-
-	for (int k = 0; k < 14; k++) {
-
-	  int cellId = c + cellOffsets[k];
-	  if (cellId >= numCells) continue;
-	
-	  for (particle_t& rj : plists[cellId]) {
-
-	    int j = rj.idx;
-
-	    if (k == 0 && j >= i) continue;
-	  
-	    float r[3] = {(ri.x-rj.x), 
-			  (ri.y-rj.y), 
-			  (ri.z-rj.z)};
-	    float r2 = r[0]*r[0]+r[1]*r[1]+r[2]*r[2];
-	    float magr = std::sqrt(r2);
-	    if (magr > h) continue;
-	    float rho = m*Wpoly6(magr);
-
-	    // densities[i] += rho;
-	    densityi += rho;
-	    rj.rho += rho;
-	  }
-	}
-	ri.rho += densityi;
-      }
-    }    
-  }
+void computeForces(int z0)
+{
+  const float cellSize = h*1.01f;
+  const int gridSize = std::ceil(tankSize/cellSize);
+  const int numCells = gridSize*gridSize*gridSize;
+  const int numCellsInSlab = gridSize*gridSize;
 
   float cs = soundSpeed*soundSpeed;
+
 #pragma omp parallel for 
-  for (int z = 0; z < gridSize; z+=2) {    
+  for (int z = z0; z < gridSize; z+=2) {    
     for (int s = 0; s < numCellsInSlab; s++) {      
 
       int c = s + z*numCellsInSlab;
@@ -367,84 +332,18 @@ void updateParticles(float* particles, float* velocities, int numParticles)
       }
     }
   }
-#pragma omp parallel for 
-  for (int z = 1; z < gridSize; z+=2) {    
-    for (int s = 0; s < numCellsInSlab; s++) {      
+}
 
-      int c = s + z*numCellsInSlab;
+void updateParticles(float* particles, float* velocities, int numParticles)
+{
+  assignParticlesToCells(particles, velocities, numParticles);
 
-      for (particle_t& ri : plists[c]) {
-	
-	int i = ri.idx;
-	float pi = cs*(ri.rho-rho0);
-	float fviscosity[3] = {0.0f, 0.0f, 0.0f};
+  computeDensity(0);
+  computeDensity(1);
 
-	for (int k = 0; k < 14; k++) {
+  computeForces(0);
+  computeForces(1);
 
-	  int cellId = c + cellOffsets[k];
-	  if (cellId >= numCells) continue;
-	
-	  for (particle_t& rj : plists[cellId]) {
-
-	    int j = rj.idx;
-
-	    if (k == 0 && j >= i) continue;
-
-	    float pj = cs*(rj.rho-rho0);
-      	    float r[3] = {(ri.x-rj.x), (ri.y-rj.y), (ri.z-rj.z)};
-	    float magr = std::sqrt(r[0]*r[0]+r[1]*r[1]+r[2]*r[2]);
-	    if (magr > h) continue;
-
-	    // pressure
-	    float mfp = -m*(pi+pj)/(ri.rho+rj.rho)*gradWspiky(magr);
-	    // FROM FLUIDS: (does not work well)
-	    // float mfp = -m*(pi+pj)/(densities[i]*densities[j])*gradWspiky(magr);
-
-	    vecNormalize(r,r);
-	    
-	    ri.fx += mfp*r[0];
-	    ri.fy += mfp*r[1];
-	    ri.fz += mfp*r[2];
-
-	    rj.fx += -mfp*r[0];
-	    rj.fy += -mfp*r[1];
-	    rj.fz += -mfp*r[2];
-
-	    // viscosity
-	    float tmp = dynVisc*m*laplWviscosity(magr)*2.0f/(ri.rho+rj.rho);
-	    float vdiff[3] = {rj.u - ri.u, rj.v - ri.v, rj.w - ri.w};
-
-	    ri.fx += vdiff[0]*tmp;
-	    ri.fy += vdiff[1]*tmp;
-	    ri.fz += vdiff[2]*tmp;
-
-	    rj.fx += -vdiff[0]*tmp;
-	    rj.fy += -vdiff[1]*tmp;
-	    rj.fz += -vdiff[2]*tmp;
-
-
-	    // surface tension
-	    float md = m*2.0f/(ri.rho+rj.rho);
-	    float maggradcolor = gradWpoly6(magr);
-
-	    r[0] *= maggradcolor;
-	    r[1] *= maggradcolor;
-	    r[2] *= maggradcolor;
-
-	    ri.gx += r[0]*md;
-	    ri.gy += r[1]*md;
-	    ri.gz += r[2]*md;
-	    ri.lc += md*laplWpoly6(magr);
-
-	    rj.gx += -r[0]*md;
-	    rj.gy += -r[1]*md;
-	    rj.gz += -r[2]*md;
-	    rj.lc += md*laplWpoly6(magr);
-	  }
-	}
-      }
-    }
-  }
   // update velocity and advect particles--------------------------------------
   for (int i = 0; i < plists.size(); i++) {
     for (int j = 0; j < plists[i].size(); j++) {
