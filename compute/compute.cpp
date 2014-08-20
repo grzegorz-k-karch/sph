@@ -25,6 +25,8 @@ float h6 = 0.0f;
 
 int cellOffsets[14];
 
+int numIterations = 10;
+
 typedef struct {
 
   // position
@@ -255,7 +257,7 @@ void computeDensity(int z0)
   }
 }
 
-void computeForces(int z0)
+void computePressureForces(int z0)
 {
   const float cellSize = h*1.01f;
   const int gridSize = std::ceil(tankSize/cellSize);
@@ -305,6 +307,46 @@ void computeForces(int z0)
 	    rj.fx += -mfp*r[0];
 	    rj.fy += -mfp*r[1];
 	    rj.fz += -mfp*r[2];
+	  }
+	}
+      }
+    }
+  }
+}
+
+void computeOtherForces(int z0)
+{
+  const float cellSize = h*1.01f;
+  const int gridSize = std::ceil(tankSize/cellSize);
+  const int numCells = gridSize*gridSize*gridSize;
+  const int numCellsInSlab = gridSize*gridSize;
+
+#pragma omp parallel for 
+  for (int z = z0; z < gridSize; z+=2) {    
+    for (int s = 0; s < numCellsInSlab; s++) {      
+
+      int c = s + z*numCellsInSlab;
+
+      for (particle_t& ri : plists[c]) {
+	
+	int i = ri.idx;
+
+	for (int k = 0; k < 14; k++) {
+
+	  int cellId = c + cellOffsets[k];
+	  if (cellId >= numCells) continue;
+	
+	  for (particle_t& rj : plists[cellId]) {
+
+	    int j = rj.idx;
+
+	    if (k == 0 && j >= i) continue;
+
+      	    float r[3] = {(ri.x-rj.x), (ri.y-rj.y), (ri.z-rj.z)};
+	    float magr = std::sqrt(r[0]*r[0]+r[1]*r[1]+r[2]*r[2]);
+	    if (magr > h) continue;
+
+	    vecNormalize(r,r);
 
 	    // viscosity
 	    float tmp = dynVisc*m*laplWviscosity(magr)*2.0f/(ri.rho+rj.rho);
@@ -349,10 +391,14 @@ void updateParticles(float* particles, float* velocities, int numParticles)
   computeDensity(0);
   computeDensity(1);
 
-  computeForces(0);
-  computeForces(1);
+  computePressureForces(0);
+  computePressureForces(1);  
+
+  computeOtherForces(0);
+  computeOtherForces(1);
 
   // update velocity and advect particles--------------------------------------
+#pragma omp parallel for
   for (int i = 0; i < plists.size(); i++) {
     for (int j = 0; j < plists[i].size(); j++) {
 
