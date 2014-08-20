@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -std=c++11 -fopenmp
+CXXFLAGS = -std=c++11 -fopenmp -Wall
 
 INCLUDES = -Irender -I. -Icompute
 LIBDIRS = -Lrender/GLFW

@@ -23,24 +23,33 @@ float h9 = 0.0f;
 float h2 = 0.0f;
 float h6 = 0.0f;
 
-int cellOffsets[13];
+int cellOffsets[14];
 
 typedef struct {
+
+  // position
   float x;
   float y;
   float z;
+
+  // index
   int idx;
 
+  // velocity
   float u;
   float v;
   float w;  
+
+  // density
   float rho;
 
+  // force
   float fx;
   float fy;
   float fz;
   float dummy;
 
+  // surface tension
   float gx;
   float gy;
   float gz;
@@ -265,7 +274,6 @@ void computeForces(int z0)
 	
 	int i = ri.idx;
 	float pi = cs*(ri.rho-rho0);
-	float fviscosity[3] = {0.0f, 0.0f, 0.0f};
 
 	for (int k = 0; k < 14; k++) {
 
