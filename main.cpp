@@ -23,7 +23,7 @@ int main()
 {
   std::cout << "NTHREADS = " << omp_thread_count() << std::endl;
 
-  initOpenGL();
+  initOpenGL(tankSize);
   initGeometry();
 
   initParticles(&particles, &velocities, numParticles);

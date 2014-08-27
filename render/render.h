@@ -1,7 +1,7 @@
 #ifndef RENDER_H
 #define RENDER_H
 
-void initOpenGL();
+void initOpenGL(float tankSize);
 
 void initGeometry();
 

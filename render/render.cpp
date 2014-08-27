@@ -23,7 +23,9 @@ GLfloat curquat[4];
 GLfloat lastquat[4];
 
 
-GLfloat modelTranslation[3] = { 0.0f, 0.0f, -1.0f };
+GLfloat modelTranslation[3] = { 0.0f, 0.0f, -3.5f };
+GLfloat domainOffset[3];
+GLfloat domainScale[3];
 
 double mousePosX;
 double mousePosY;
@@ -259,7 +261,7 @@ int display(float* particles, int numParticles)
   return glfwWindowShouldClose(window);
 }
 
-void initOpenGL()
+void initOpenGL(float tankSize)
 {
   glfwSetErrorCallback(error_callback);
 
@@ -297,4 +299,21 @@ void initOpenGL()
   glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
 
   program = initShaderProgram();
+
+  glUseProgram(program);
+
+  domainScale[0] = 2.0f/tankSize;
+  domainScale[1] = 2.0f/tankSize;
+  domainScale[2] = 2.0f/tankSize;
+
+  domainOffset[0] = -1.0f;
+  domainOffset[1] = -1.0f;  
+  domainOffset[2] = -1.0f;
+
+  glUniform3fv(glGetUniformLocation(program, "domainScale"),
+	       1, domainScale);
+  glUniform3fv(glGetUniformLocation(program, "domainOffset"),
+	       1, domainOffset);
+
+  glUseProgram(0);
 }

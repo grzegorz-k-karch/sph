@@ -9,7 +9,7 @@
 
 #include "compute.h"
 
-#define PCISPH 1
+#define PCISPH 0
 
 float soundSpeed = 1.0f;
 float m = 0.00020543f;
@@ -30,8 +30,6 @@ const int minNumIter = 3;
 const int numIterations = 10;
 
 int cellOffsets[14];
-
-
 
 typedef struct {
 
@@ -506,9 +504,14 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 
   int iter = 0;
 
-  while (checkDensityError() && iter < numIterations) {
+  while (checkDensityError() || iter < minNumIter) {
+
+    update(particles, velocities);
 
     // predictDensity();
+    computeDensity(0);
+    computeDensity(1);
+
     // predictDensityVariation();
     // updatePressure();
 
@@ -538,8 +541,6 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 
   computeOtherForces(0);
   computeOtherForces(1);
-
-  std::cout << "PASSED " << checkDensityError() << std::endl;
 
   // update velocity and advect particles--------------------------------------
 #pragma omp parallel for
