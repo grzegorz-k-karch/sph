@@ -9,7 +9,7 @@
 
 #include "compute.h"
 
-#define PCISPH 0
+#define PCISPH 1
 
 float soundSpeed = 1.0f;
 float m = 0.00020543f;
@@ -27,7 +27,7 @@ float h6 = 0.0f;
 
 const float rhoError = 0.01f;
 const int minNumIter = 3;
-const int numIterations = 10;
+const int maxNumIter = 10;
 
 int cellOffsets[14];
 
@@ -62,7 +62,9 @@ typedef struct {
   float lc;
 
 } particle_t;
-
+#if PCISPH
+float *pressures = 0;
+#endif
 std::vector<std::vector<particle_t> > plists;
 
 float vecLength(const float* a)
@@ -181,15 +183,23 @@ void initParticles(float** particles, float** velocities, int numParticles)
   cellOffsets[11] = -1 + nx + nxy; // - , 0 , + (11)
   cellOffsets[12] =      nx + nxy; // 0 , + , + (12)
   cellOffsets[13] =  1 + nx + nxy; // + , + , + (13)
+
+#if PCISPH
+  pressures = new float[numParticles*3];
+#endif
 }
 
 void deleteParticles(float** particles, float** velocities)
 {
   delete [] *particles;
   delete [] *velocities;
+#if PCISPH
+  delete [] pressures;
+#endif
 }
 
-void assignParticlesToCells(float* particles, float* velocities, int numParticles)
+void assignParticlesToCells(float* particles, float* velocities, 
+			    int numParticles)
 {
   const float cellSize = h*1.01f;
   const int gridSize = std::ceil(tankSize/cellSize);
@@ -213,6 +223,7 @@ void assignParticlesToCells(float* particles, float* velocities, int numParticle
       cellCoords[2]*gridSize*gridSize;
 
     float *velo = &velocities[i*3];
+
     particle_t particle = {pos[0], pos[1], pos[2], i, 
 			   velo[0], velo[1], velo[2], 0.0f,
 			   0.0f, 0.0f, 0.0f, 0.0f,
@@ -426,7 +437,7 @@ void finalizeOtherForces()
   }
 }
 
-void update(float* particles, float* velocities)
+void integrate(float* particles, float* velocities)
 {
 #pragma omp parallel for
   for (int i = 0; i < plists.size(); i++) {
@@ -490,6 +501,13 @@ void checkBoundaries(float* particles, float* velocities, int numParticles)
 }
 
 #if PCISPH
+void predictPressure()
+{
+  // pi += p~i
+}
+#endif
+
+#if PCISPH
 void updateParticles(float* particles, float* velocities, int numParticles)
 {
   assignParticlesToCells(particles, velocities, numParticles);
@@ -504,16 +522,14 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 
   int iter = 0;
 
-  while (checkDensityError() || iter < minNumIter) {
+  while ((checkDensityError() || iter < minNumIter) && iter < maxNumIter) {
 
-    update(particles, velocities);
+    integrate(particles, velocities);
 
-    // predictDensity();
     computeDensity(0);
     computeDensity(1);
 
-    // predictDensityVariation();
-    // updatePressure();
+    predictPressure();
 
     // predictPressureForces();
 
@@ -524,7 +540,7 @@ void updateParticles(float* particles, float* velocities, int numParticles)
   // computePressureForces(1);  
 
 
-  update(particles, velocities);
+  integrate(particles, velocities);
 
   checkBoundaries(particles, velocities, numParticles);
 }
@@ -542,79 +558,11 @@ void updateParticles(float* particles, float* velocities, int numParticles)
   computeOtherForces(0);
   computeOtherForces(1);
 
-  // update velocity and advect particles--------------------------------------
-#pragma omp parallel for
-  for (int i = 0; i < plists.size(); i++) {
-    for (int j = 0; j < plists[i].size(); j++) {
+  finalizeOtherForces();
 
-      // gravity
-      plists[i][j].fx += a_gravity[0]*plists[i][j].rho;
-      plists[i][j].fy += a_gravity[1]*plists[i][j].rho;
-      plists[i][j].fz += a_gravity[2]*plists[i][j].rho;
+  integrate(particles, velocities);
 
-      // surface tension
-      float gradcolor[3] = {plists[i][j].gx,
-			    plists[i][j].gy,
-			    plists[i][j].gz};
-      vecNormalize(gradcolor, gradcolor);
-
-      float tmp = -surfTension*plists[i][j].lc;
-
-      plists[i][j].fx += tmp*gradcolor[0];
-      plists[i][j].fy += tmp*gradcolor[1];
-      plists[i][j].fz += tmp*gradcolor[2];  
-
-      int idx = plists[i][j].idx;
-
-      float *particle = &particles[idx*3];
-      float sc = timestep/plists[i][j].rho;
-
-      float *velocity = &velocities[idx*3];
-    
-      velocity[0] += plists[i][j].fx*sc;
-      velocity[1] += plists[i][j].fy*sc;
-      velocity[2] += plists[i][j].fz*sc;
-
-      particle[0] = particle[0] + velocity[0]*timestep;
-      particle[1] = particle[1] + velocity[1]*timestep;
-      particle[2] = particle[2] + velocity[2]*timestep;      
-    }
-  }
-  // check particles on/behind the boundary------------------------------------
-#pragma omp parallel for
-  for (int i = 0; i < numParticles; i++) {
-
-    float *particle = &particles[i*3];
-    float *velocity = &velocities[i*3];
-    float damping = 1.0f;
-
-    if (particle[0] < 0.0f) {
-      particle[0] = 0.0f;
-      velocity[0] = -damping*velocity[0];
-    }
-    if (particle[0] >  tankSize) {
-      particle[0] = tankSize;
-      velocity[0] = -damping*velocity[0];
-    }
-
-    if (particle[1] < 0.0f) {
-      particle[1] = 0.0f;
-      velocity[1] = -damping*velocity[1];
-    }
-    if (particle[1] >  tankSize) {
-      particle[1] = tankSize;
-      velocity[1] = -damping*velocity[1];
-    }
-
-    if (particle[2] < 0.0f) {
-      particle[2] = 0.0f;
-      velocity[2] = -damping*velocity[2];
-    }
-    if (particle[2] >  tankSize) {
-      particle[2] = tankSize;
-      velocity[2] = -damping*velocity[2];
-    }
-  }
+  checkBoundaries(particles, velocities, numParticles);
 }
 #endif
 

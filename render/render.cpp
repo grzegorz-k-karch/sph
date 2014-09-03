@@ -22,7 +22,6 @@ GLint windowHeight = 400;
 GLfloat curquat[4];
 GLfloat lastquat[4];
 
-
 GLfloat modelTranslation[3] = { 0.0f, 0.0f, -3.5f };
 GLfloat domainOffset[3];
 GLfloat domainScale[3];
@@ -111,8 +110,8 @@ void createSphere(float radius,
 		  std::vector<unsigned int>& indices, 
 		  std::vector<float>& normals)
 {
-  int stacks = 4;
-  int slices = 4;
+  int stacks = 8;
+  int slices = 8;
 
   for(int i = 0; i <= stacks; i++) {
 
@@ -222,7 +221,6 @@ void initGeometry()
 
   glGenBuffers(1, &vboPositions);
   glBindBuffer(GL_ARRAY_BUFFER, vboPositions);
-
   glEnableVertexAttribArray(2);
   glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(float)*3, (GLubyte*)NULL);
   glVertexAttribDivisor(2, 1);
