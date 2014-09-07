@@ -165,11 +165,11 @@ void transform()
   modelMX = glm::translate(glm::mat4(1.0f), glm::vec3(modelTranslation[0],
 						      modelTranslation[1], 
 						      modelTranslation[2]));
-  modelInvTranspMX = glm::transpose(glm::inverse(modelMX));
-
   glm::mat4 m;
   build_rotmatrix(m, curquat);
   modelMX = glm::mat4(modelMX*m);
+
+  modelInvTranspMX = glm::transpose(glm::inverse(modelMX));
 
   glUniformMatrix4fv(glGetUniformLocation(program, "model_mat"),
 		     1, GL_FALSE, glm::value_ptr(modelMX));

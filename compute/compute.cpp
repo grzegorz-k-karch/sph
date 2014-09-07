@@ -9,7 +9,7 @@
 
 #include "compute.h"
 
-#define PCISPH 1
+#define PCISPH 0
 
 float soundSpeed = 1.0f;
 float m = 0.00020543f;
