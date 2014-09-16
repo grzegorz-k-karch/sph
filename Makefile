@@ -1,7 +1,7 @@
 CXX = g++
 CXXFLAGS = -std=c++11 -fopenmp -Wall
 
-INCLUDES = -Irender -I. -Icompute
+INCLUDES = -Irender -I. -Icompute -I$(HOME)/NVIDIA_CUDA-6.5_Samples/common/inc/ -I/usr/local/cuda/include/
 LIBDIRS = -Lrender/GLFW
 LIBRARIES = -lglfw3 -lGL -lGLEW -lX11 -lXrandr -lXi -lXxf86vm
 
@@ -23,7 +23,7 @@ helper_glsl.o: render/helper_glsl.cpp
 trackball.o: render/trackball.cpp
 	$(CXX) $(CXXFLAGS) -o $@ -c $<
 compute.o: compute/compute.cpp
-	$(CXX) $(CXXFLAGS) -o $@ -c $<
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ -c $<
 render.o: render/render.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ -c $<
 $(BIN): main.o helper_glsl.o trackball.o compute.o render.o
@@ -31,4 +31,4 @@ $(BIN): main.o helper_glsl.o trackball.o compute.o render.o
 
 .PHONY: clean
 clean:
-	rm -f *.o *~ $(BIN)
+	rm -fv *.o *~ $(BIN)

@@ -6,10 +6,16 @@
 #include <forward_list>
 #include <algorithm>
 #include <omp.h>
+#include <helper_math.h>
 
 #include "compute.h"
 
-#define PCISPH 0
+using std::size_t;
+using std::vector;
+using std::cout;
+using std::endl;
+
+#define PCISPH 1
 
 float soundSpeed = 1.0f;
 float m = 0.00020543f;
@@ -63,7 +69,7 @@ typedef struct {
 
 } particle_t;
 #if PCISPH
-float *pressures = 0;
+std::vector<float> pressures;
 #endif
 std::vector<std::vector<particle_t> > plists;
 
@@ -133,11 +139,13 @@ float laplWpoly6(const float r)
 
 int checkDensityError()
 {
-  for (int i = 0; i < plists.size(); i++) {
-    for (int j = 0; j < plists[i].size(); j++) {
-      float err = std::abs(plists[i][j].rho-rho0);
-      if (err > rhoError)
+  for (const auto& cell : plists) {
+    for (const auto& particle : cell) {
+
+      float err = std::abs(particle.rho-rho0);
+      if (err > rhoError) {
 	return 1;
+      }
     }
   }
   return 0;
@@ -185,7 +193,7 @@ void initParticles(float** particles, float** velocities, int numParticles)
   cellOffsets[13] =  1 + nx + nxy; // + , + , + (13)
 
 #if PCISPH
-  pressures = new float[numParticles*3];
+  pressures.resize(numParticles);
 #endif
 }
 
@@ -193,9 +201,6 @@ void deleteParticles(float** particles, float** velocities)
 {
   delete [] *particles;
   delete [] *velocities;
-#if PCISPH
-  delete [] pressures;
-#endif
 }
 
 void assignParticlesToCells(float* particles, float* velocities, 
@@ -205,9 +210,12 @@ void assignParticlesToCells(float* particles, float* velocities,
   const int gridSize = std::ceil(tankSize/cellSize);
   const int numCells = gridSize*gridSize*gridSize;
 
-  for (int i = 0; i < plists.size(); i++) {
-    plists[i].clear();
+  for (auto& cell : plists) {
+    cell.clear();
   }
+  // for (int i = 0; i < plists.size(); i++) {
+  //   plists[i].clear();
+  // }
   plists.clear();
   plists.resize(numCells);
 
@@ -284,6 +292,12 @@ void computeDensity(int z0)
   }
 }
 
+void computeDensityComplete()
+{
+  computeDensity(0);
+  computeDensity(1);
+}
+
 void computePressureForces(int z0)
 {
   const float cellSize = h*1.01f;
@@ -339,6 +353,12 @@ void computePressureForces(int z0)
       }
     }
   }
+}
+
+void computePressureForcesComplete()
+{
+  computePressureForces(0);
+  computePressureForces(1);
 }
 
 void computeOtherForces(int z0)
@@ -437,6 +457,13 @@ void finalizeOtherForces()
   }
 }
 
+void computeOtherForcesComplete()
+{
+  computeOtherForces(0);
+  computeOtherForces(1);
+  finalizeOtherForces();
+}
+
 void integrate(float* particles, float* velocities)
 {
 #pragma omp parallel for
@@ -501,9 +528,106 @@ void checkBoundaries(float* particles, float* velocities, int numParticles)
 }
 
 #if PCISPH
-void predictPressure()
+vector<float3> prod_sum_grad;
+vector<float> sum_prod_grad;
+void predictPressure(int z0)
 {
-  // pi += p~i
+  const float cellSize = h*1.01f;
+  const int gridSize = std::ceil(tankSize/cellSize);
+  const int numCells = gridSize*gridSize*gridSize;
+  const int numCellsInSlab = gridSize*gridSize;
+
+#pragma omp parallel for 
+  for (int z = z0; z < gridSize; z+=2) {    
+    for (int s = 0; s < numCellsInSlab; s++) {
+
+      int c = s + z*numCellsInSlab;
+
+      for (particle_t& ri: plists[c]) {
+
+	int i = ri.idx;
+
+	for (int k = 0; k < 14; k++) {
+	  
+	  int cellId = c + cellOffsets[k];
+	  if (cellId >= numCells) continue;
+	  
+	  for (particle_t& rj : plists[cellId]) {
+
+	    int j = rj.idx;
+	    if (k == 0 && j >= i) continue;
+	  
+	    float r[3] = {(ri.x-rj.x), (ri.y-rj.y), (ri.z-rj.z)};
+	    float r2 = r[0]*r[0]+r[1]*r[1]+r[2]*r[2];
+  	    float magr = std::sqrt(r2);
+	    if (magr > h) continue;
+
+	    float gw = gradWspiky(magr);
+	    float gw2 = gw*gw;
+
+	    sum_prod_grad[i] += gw2;
+	    sum_prod_grad[j] += gw2;
+
+	    vecNormalize(r,r);
+	    float3 gwv = make_float3(r[0]*gw, r[1]*gw, r[2]*gw);
+	    prod_sum_grad[i] += gwv;
+	    prod_sum_grad[j] -= gwv;
+	  }
+	}
+      }
+    }
+  }
+}
+
+void predictPressureComplete()
+{
+  sum_prod_grad = vector<float>(pressures.size(), 0.0f);
+  prod_sum_grad = vector<float3>(pressures.size(), make_float3(0.0f));
+
+  predictPressure(0);
+  predictPressure(1);
+
+  const float beta = timestep*timestep*m*2.0f/(rho0+rho0);
+  vector<float> delta(pressures.size(), 0.0f);
+
+  //#pragma omp parallel for 
+  for (int i = 0; i < pressures.size(); i++) {
+
+    float divisor = beta*(-dot(prod_sum_grad[i], prod_sum_grad[i]) - sum_prod_grad[i]);
+    if (divisor != 0.0f) 
+      //      cout << beta << " " << dot(prod_sum_grad[i], prod_sum_grad[i]) << " " << sum_prod_grad[i] << endl;
+      delta[i] = -1.0f/divisor;
+  }
+  //#pragma omp parallel for 
+  for (int i = 0; i < plists.size(); i++) {
+    for (int j = 0; j < plists[i].size(); j++) {
+      
+      int idx = plists[i][j].idx;
+      pressures[idx] += (plists[i][j].rho - rho0)*delta[idx];
+    }
+  }
+}
+
+void predictPressureForces()
+{
+  for (int i = 0; i < plists.size(); i++) {
+    for (int j = 0; j < plists[i].size(); j++) {
+
+      int idx = plists[i][j].idx;
+      float rho02 = rho0+rho0;
+      float tmp = -m*2.0f*pressures[idx]/rho02;
+      plists[i][j].fx += tmp*prod_sum_grad[idx].x;
+      plists[i][j].fy += tmp*prod_sum_grad[idx].y;
+      plists[i][j].fz += tmp*prod_sum_grad[idx].z;
+    }
+  }
+}
+
+void initPressures()
+{
+  for (float& p : pressures) {
+    p = 0.0f;
+  }
 }
 #endif
 
@@ -512,26 +636,17 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 {
   assignParticlesToCells(particles, velocities, numParticles);
   
-  computeDensity(0);
-  computeDensity(1);
-
-  computeOtherForces(0);
-  computeOtherForces(1);
-  
-  finalizeOtherForces();
+  computeDensityComplete();
+  computeOtherForcesComplete();
+  initPressures();
 
   int iter = 0;
-
   while ((checkDensityError() || iter < minNumIter) && iter < maxNumIter) {
 
     integrate(particles, velocities);
-
-    computeDensity(0);
-    computeDensity(1);
-
-    predictPressure();
-
-    // predictPressureForces();
+    computeDensityComplete();
+    predictPressureComplete();
+    predictPressureForces();
 
     iter++;
   }
@@ -539,9 +654,7 @@ void updateParticles(float* particles, float* velocities, int numParticles)
   // computePressureForces(0);
   // computePressureForces(1);  
 
-
-  integrate(particles, velocities);
-
+  // integrate(particles, velocities);
   checkBoundaries(particles, velocities, numParticles);
 }
 #else
@@ -549,19 +662,10 @@ void updateParticles(float* particles, float* velocities, int numParticles)
 {
   assignParticlesToCells(particles, velocities, numParticles);
 
-  computeDensity(0);
-  computeDensity(1);
-
-  computePressureForces(0);
-  computePressureForces(1);  
-
-  computeOtherForces(0);
-  computeOtherForces(1);
-
-  finalizeOtherForces();
-
+  computeDensityComplete();
+  computePressureForcesComplete();
+  computeOtherForcesComplete();
   integrate(particles, velocities);
-
   checkBoundaries(particles, velocities, numParticles);
 }
 #endif
