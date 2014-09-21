@@ -110,8 +110,8 @@ void createSphere(float radius,
 		  std::vector<unsigned int>& indices, 
 		  std::vector<float>& normals)
 {
-  int stacks = 8;
-  int slices = 8;
+  int stacks = 16;
+  int slices = 16;
 
   for(int i = 0; i <= stacks; i++) {
 
@@ -185,7 +185,7 @@ void initGeometry()
 {
   // sphere for instancing
 
-  float radius = 0.002f;
+  float radius = 0.003f;
   std::vector<float> Vertices;
   std::vector<float> Normals;  
   std::vector<unsigned int> Indices;

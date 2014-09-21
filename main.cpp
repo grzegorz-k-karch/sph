@@ -1,11 +1,12 @@
 #include <iostream>
 #include <omp.h>
 #include <sys/time.h>
+#include <vector>
 
 #include "compute.h"
 #include "render.h"
 
-int numParticles = 50000;
+unsigned numParticles = 50000;
 float *particles = 0;
 float *velocities = 0;
 
