@@ -2,13 +2,16 @@
 #include <omp.h>
 #include <sys/time.h>
 #include <vector>
+#include <helper_math.h>
 
 #include "compute.h"
 #include "render.h"
 
+using std::vector;
+
 unsigned numParticles = 50000;
-float *particles = 0;
-float *velocities = 0;
+vector<float4> particles;
+vector<float4> velocities;
 
 extern float tankSize;
 
@@ -27,7 +30,7 @@ int main()
   initOpenGL(tankSize);
   initGeometry();
 
-  initParticles(&particles, &velocities, numParticles);
+  initParticles(particles, velocities, numParticles);
 
   int closeWindow = 0;
 
@@ -40,8 +43,8 @@ int main()
 
     gettimeofday(&start, 0);
 
-    updateParticles(particles, velocities, numParticles);
-    closeWindow = display(particles, numParticles);
+    updateParticles(particles, velocities);
+    closeWindow = display(particles);
 
     // t = clock() - t;
     // std::cout << "elapsed time: " << float(t)/CLOCKS_PER_SEC << std::endl;
@@ -51,8 +54,6 @@ int main()
     std::cout << "elapsed time [us]: " << useconds << " " 
 	      << "fps: " << 1.0/(useconds/1000000.0) << std::endl;
   }
-
-  deleteParticles(&particles, &velocities);
 
   terminateOpenGL();
 

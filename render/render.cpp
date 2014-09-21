@@ -14,6 +14,7 @@
 
 #include <vector>
 #include <iostream> 
+#include <helper_math.h>
 
 GLFWwindow *window;
 GLint windowWidth = 600;
@@ -130,11 +131,11 @@ void createSphere(float radius,
       vertices.push_back(v[2]);
       vertices.push_back(v[3]);
 
-      float n3[3] = {x * zr0, y * zr0, z0};
-      vecNormalize(n3,n3);
-      normals.push_back(n3[0]);
-      normals.push_back(n3[1]);
-      normals.push_back(n3[2]);
+      float3 n3 = make_float3(x * zr0, y * zr0, z0);
+      n3 = normalize(n3);
+      normals.push_back(n3.x);
+      normals.push_back(n3.y);
+      normals.push_back(n3.z);
       normals.push_back(0.0f);
     }
   }
@@ -222,7 +223,7 @@ void initGeometry()
   glGenBuffers(1, &vboPositions);
   glBindBuffer(GL_ARRAY_BUFFER, vboPositions);
   glEnableVertexAttribArray(2);
-  glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(float)*3, (GLubyte*)NULL);
+  glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(float4), (GLubyte*)NULL);
   glVertexAttribDivisor(2, 1);
 
   glBindVertexArray(0);
@@ -237,20 +238,17 @@ unsigned int initShaderProgram()
   return sp;
 }
 
-int display(float* particles, int numParticles)
+int display(std::vector<float4>& particles)
 {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   glUseProgram(program);
 
   transform();
 
-  glBindBuffer(GL_ARRAY_BUFFER, vboParticles);
-  glBufferData(GL_ARRAY_BUFFER, numParticles*3*sizeof(float), particles, GL_STATIC_DRAW);
-
   glBindVertexArray(vaoSphere);
   glBindBuffer(GL_ARRAY_BUFFER, vboPositions);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(float)*numParticles*3, particles, GL_DYNAMIC_DRAW);
-  glDrawElementsInstanced(GL_TRIANGLES, numIndicesSphere, GL_UNSIGNED_INT, 0, numParticles);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(float4)*particles.size(), particles.data(), GL_DYNAMIC_DRAW);
+  glDrawElementsInstanced(GL_TRIANGLES, numIndicesSphere, GL_UNSIGNED_INT, 0, particles.size());
 
   glfwPollEvents();
 

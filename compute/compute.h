@@ -1,11 +1,13 @@
 #ifndef COMPUTE_H
 #define COMPUTE_H
 
-void initParticles(float** particles, float** velocities, unsigned numParticles);
-void updateParticles(float* particles, float* velocities, unsigned numParticles);
+#include <vector>
+#include <vector_types.h>
 
-void deleteParticles(float** particles, float** velocities);
-
-void vecNormalize(const float* a, float* b);
+void initParticles(std::vector<float4>& particles, 
+		   std::vector<float4>& velocities, 
+		   unsigned numParticles);
+void updateParticles(std::vector<float4>& particles, 
+		     std::vector<float4>& velocities);
 
 #endif//COMPUTE_H

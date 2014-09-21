@@ -146,20 +146,6 @@ float laplWpoly6(const float r)
   return w;
 }
 
-int checkDensityError()
-{
-  for (const auto& cell : plists) {
-    for (const auto& particle : cell) {
-
-      float err = std::abs(particle.rho-rho0);
-      if (err > rhoError) {
-	return 1;
-      }
-    }
-  }
-  return 0;
-}
-
 #if PCISPH
 void precomputeDelta()
 {
@@ -197,7 +183,9 @@ void precomputeDelta()
 }
 #endif
 
-void initParticles(float** particles, float** velocities, unsigned numParticles)
+void initParticles(std::vector<float4>& particles, 
+		   std::vector<float4>& velocities, 
+		   unsigned numParticles)
 {
   h2 = h*h;
   h6 = h2*h2*h2;
@@ -209,20 +197,19 @@ void initParticles(float** particles, float** velocities, unsigned numParticles)
   gradWpoly6Coeff = -945.0f/(32.0f*M_PI*h9);
   laplWpoly6Coeff = 945.0f/(32.0f*M_PI*h9);
 
-  *particles = new float[numParticles*3];
-  *velocities = new float[numParticles*3];
+  particles.resize(numParticles);
+  velocities.resize(numParticles);
 
   srand(0);
 
   for (unsigned i = 0; i < numParticles; i++) {
 
-    (*particles)[i*3+0] = float(rand())/RAND_MAX*tankSize/2.0f;
-    (*particles)[i*3+1] = float(rand())/RAND_MAX*tankSize/2.0f;
-    (*particles)[i*3+2] = float(rand())/RAND_MAX*tankSize/2.0f;
+    particles[i].x = float(rand())/RAND_MAX*tankSize/2.0f;
+    particles[i].y = float(rand())/RAND_MAX*tankSize/2.0f;
+    particles[i].z = float(rand())/RAND_MAX*tankSize/2.0f;
+    particles[i].w = 1.0f;
 
-    (*velocities)[i*3+0] = 0.0f;
-    (*velocities)[i*3+1] = 0.0f;
-    (*velocities)[i*3+2] = 0.0f;
+    velocities[i] = make_float4(0.0f);
   }
 
   const float cellSize = h*1.01f;
@@ -249,14 +236,8 @@ void initParticles(float** particles, float** velocities, unsigned numParticles)
 #endif
 }
 
-void deleteParticles(float** particles, float** velocities)
-{
-  delete [] *particles;
-  delete [] *velocities;
-}
-
-void assignParticlesToCells(float* particles, float* velocities, 
-			    unsigned numParticles)
+void assignParticlesToCells(std::vector<float4>& particles, 
+			    std::vector<float4>& velocities)
 {
   const float cellSize = h*1.01f;
   const int gridSize = std::ceil(tankSize/cellSize);
@@ -268,21 +249,22 @@ void assignParticlesToCells(float* particles, float* velocities,
   plists.clear();
   plists.resize(numCells);
 
+  unsigned numParticles = particles.size();
   for (unsigned i = 0; i < numParticles; i++) {
 
-    float *pos = &particles[i*3];
-    int cellCoords[3] = {int(pos[0]/cellSize), 
-			 int(pos[1]/cellSize), 
-			 int(pos[2]/cellSize)};
+    float4 pos = particles[i];
+    int cellCoords[3] = {int(pos.x/cellSize), 
+			 int(pos.y/cellSize), 
+			 int(pos.z/cellSize)};
     int cellId = 
       cellCoords[0] + 
       cellCoords[1]*gridSize + 
       cellCoords[2]*gridSize*gridSize;
 
-    float *velo = &velocities[i*3];
+    float4 velo = velocities[i];
 
-    particle_t particle = {pos[0], pos[1], pos[2], i, 
-			   velo[0], velo[1], velo[2], 0.0f,
+    particle_t particle = {pos.x, pos.y, pos.z, i, 
+			   velo.x, velo.y, velo.z, 0.0f,
 			   0.0f, 0.0f, 0.0f, 0.0f,
 			   0.0f, 0.0f, 0.0f, 0.0f};
     plists[cellId].push_back(particle);
@@ -514,7 +496,8 @@ void computeOtherForcesComplete()
   finalizeOtherForces();
 }
 
-void integrate(float* particles, float* velocities)
+void integrate(std::vector<float4>& particles, 
+	       std::vector<float4>& velocities)
 {
 #pragma omp parallel for
   for (unsigned i = 0; i < plists.size(); i++) {
@@ -522,75 +505,79 @@ void integrate(float* particles, float* velocities)
 
       int idx = plists[i][j].idx;
 
-      float *particle = &particles[idx*3];
+      float4 &particle = particles[idx];
+      float4 &velocity = velocities[idx];
       float sc = timestep/plists[i][j].rho;
 
-      float *velocity = &velocities[idx*3];
     
-      velocity[0] += plists[i][j].fx*sc;
-      velocity[1] += plists[i][j].fy*sc;
-      velocity[2] += plists[i][j].fz*sc;
+      velocity.x += plists[i][j].fx*sc;
+      velocity.y += plists[i][j].fy*sc;
+      velocity.z += plists[i][j].fz*sc;
 
-      particle[0] = particle[0] + velocity[0]*timestep;
-      particle[1] = particle[1] + velocity[1]*timestep;
-      particle[2] = particle[2] + velocity[2]*timestep;      
+      particle.x = particle.x + velocity.x*timestep;
+      particle.y = particle.y + velocity.y*timestep;
+      particle.z = particle.z + velocity.z*timestep;      
     }
   }
 }
 
-void checkBoundaries(float* particles, float* velocities, unsigned numParticles)
+void checkBoundaries(std::vector<float4>& particles, 
+		     std::vector<float4>& velocities)
 {
   // check particles on/behind the boundary------------------------------------
+  unsigned numParticles = particles.size();
 #pragma omp parallel for
   for (unsigned i = 0; i < numParticles; i++) {
 
-    float *particle = &particles[i*3];
-    float *velocity = &velocities[i*3];
+    float4 &particle = particles[i];
+    float4 &velocity = velocities[i];
     float damping = 1.0f;
 
-    if (particle[0] < 0.0f) {
-      particle[0] = 0.0f;
-      velocity[0] = -damping*velocity[0];
+    if (particle.x < 0.0f) {
+      particle.x = 0.0f;
+      velocity.x = -damping*velocity.x;
     }
-    if (particle[0] >  tankSize) {
-      particle[0] = tankSize;
-      velocity[0] = -damping*velocity[0];
-    }
-
-    if (particle[1] < 0.0f) {
-      particle[1] = 0.0f;
-      velocity[1] = -damping*velocity[1];
-    }
-    if (particle[1] >  tankSize) {
-      particle[1] = tankSize;
-      velocity[1] = -damping*velocity[1];
+    if (particle.x >  tankSize) {
+      particle.x = tankSize;
+      velocity.x = -damping*velocity.x;
     }
 
-    if (particle[2] < 0.0f) {
-      particle[2] = 0.0f;
-      velocity[2] = -damping*velocity[2];
+    if (particle.y < 0.0f) {
+      particle.y = 0.0f;
+      velocity.y = -damping*velocity.y;
     }
-    if (particle[2] >  tankSize) {
-      particle[2] = tankSize;
-      velocity[2] = -damping*velocity[2];
+    if (particle.y >  tankSize) {
+      particle.y = tankSize;
+      velocity.y = -damping*velocity.y;
+    }
+
+    if (particle.z < 0.0f) {
+      particle.z = 0.0f;
+      velocity.z = -damping*velocity.z;
+    }
+    if (particle.z >  tankSize) {
+      particle.z = tankSize;
+      velocity.z = -damping*velocity.z;
     }
   }
 }
 #if PCISPH
-void updateParticles(float* particles, float* velocities, unsigned numParticles)
+void updateParticles(std::vector<float4>& particles, 
+		     std::vector<float4>& velocities)
 {
-  assignParticlesToCells(particles, velocities, numParticles);
+  assignParticlesToCells(particles, velocities);
 
 }
 #else
-void updateParticles(float* particles, float* velocities, unsigned numParticles)
+void updateParticles(std::vector<float4>& particles, 
+		     std::vector<float4>& velocities)
 {
-  assignParticlesToCells(particles, velocities, numParticles);
+  assignParticlesToCells(particles, velocities);
 
   computeDensityComplete();
   computePressureForcesComplete();
   computeOtherForcesComplete();
   integrate(particles, velocities);
-  checkBoundaries(particles, velocities, numParticles);
+  checkBoundaries(particles, velocities);
 }
 #endif
