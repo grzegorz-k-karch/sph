@@ -75,23 +75,12 @@ typedef struct {
 
 std::vector<std::vector<particle_t> > plists;
 
-float vecLength(const float* a)
-{
-  return sqrt(a[0]*a[0]+a[1]*a[1]+a[2]*a[2]);
-}
-
-void vecNormalize(const float* a, float* b)
-{
-  float len = vecLength(a);
-  if (len > 0.0f) {
-    b[0] = a[0]/len;
-    b[1] = a[1]/len;
-    b[2] = a[2]/len;
-  }
-  else {
-    b[0] = b[1] = b[2] = 0.0f;
-  }
-}
+vector<vector<float4>>    X; // Position
+vector<vector<float4>>    U; // Velocity
+vector<vector<unsigned>> Id; // Index
+vector<vector<float>>   Rho; // Denity
+vector<vector<float4>>    F; // Force
+vector<vector<float4>>    K; // surface tension
 
 // kernel coefficients
 float laplWviscosityCoeff;
@@ -178,8 +167,6 @@ void precomputeDelta()
   }
 
   delta = 1.0f/(beta*(-dot(sum_grd,sum_grd) - sum_dot_grd));
-
-  cout << "delta = " << delta << endl;
 }
 #endif
 
@@ -226,7 +213,7 @@ void initParticles(std::vector<float4>& particles,
   cellOffsets[7]  =  1 - nx + nxy; // + , - , + ( 7)
   cellOffsets[8]  = -1      + nxy; // - , 0 , + ( 8)
   cellOffsets[9]  =         + nxy; // 0 , 0 , + ( 9)
-  cellOffsets[10]  =  1      + nxy; // + , 0 , + (10)
+  cellOffsets[10]  =  1     + nxy; // + , 0 , + (10)
   cellOffsets[11] = -1 + nx + nxy; // - , 0 , + (11)
   cellOffsets[12] =      nx + nxy; // 0 , + , + (12)
   cellOffsets[13] =  1 + nx + nxy; // + , + , + (13)
@@ -361,8 +348,8 @@ void computePressureForces(int z0)
 	    if (k == 0 && j >= i) continue;
 
 	    float pj = cs*(rj.rho-rho0);
-      	    float r[3] = {(ri.x-rj.x), (ri.y-rj.y), (ri.z-rj.z)};
-	    float magr = std::sqrt(r[0]*r[0]+r[1]*r[1]+r[2]*r[2]);
+      	    float3 r = make_float3(ri.x-rj.x, ri.y-rj.y, ri.z-rj.z);
+	    float magr = length(r);
 	    if (magr > h) continue;
 
 	    // pressure
@@ -371,15 +358,16 @@ void computePressureForces(int z0)
 	    // float mfp = -m*(pi+pj)/(densities[i]*densities[j])*gradWspiky(magr);
 	    // float mfp = -m*m*(pi/(ri.rho*ri.rho)+pj/(rj.rho*rj.rho))*gradWspiky(magr);
 
-	    vecNormalize(r,r);
-	    
-	    ri.fx += mfp*r[0];
-	    ri.fy += mfp*r[1];
-	    ri.fz += mfp*r[2];
+	    if (magr > 0.0f) {
+	      r = normalize(r);
+	    }
+	    ri.fx += mfp*r.x;
+	    ri.fy += mfp*r.y;
+	    ri.fz += mfp*r.z;
 
-	    rj.fx += -mfp*r[0];
-	    rj.fy += -mfp*r[1];
-	    rj.fz += -mfp*r[2];
+	    rj.fx += -mfp*r.x;
+	    rj.fy += -mfp*r.y;
+	    rj.fz += -mfp*r.z;
 	  }
 	}
       }
@@ -421,11 +409,13 @@ void computeOtherForces(int z0)
 
 	    if (k == 0 && j >= i) continue;
 
-      	    float r[3] = {(ri.x-rj.x), (ri.y-rj.y), (ri.z-rj.z)};
-	    float magr = std::sqrt(r[0]*r[0]+r[1]*r[1]+r[2]*r[2]);
+      	    float3 r = make_float3(ri.x-rj.x, ri.y-rj.y, ri.z-rj.z);
+	    float magr = length(r);
 	    if (magr > h) continue;
 
-	    vecNormalize(r,r);
+	    if (magr > 0.0f) {
+	      r = normalize(r);
+	    }
 
 	    // viscosity
 	    float tmp = dynVisc*m*laplWviscosity(magr)*2.0f/(ri.rho+rj.rho);
@@ -443,18 +433,18 @@ void computeOtherForces(int z0)
 	    float md = m*2.0f/(ri.rho+rj.rho);
 	    float maggradcolor = gradWpoly6(magr);
 
-	    r[0] *= maggradcolor;
-	    r[1] *= maggradcolor;
-	    r[2] *= maggradcolor;
+	    r.x *= maggradcolor;
+	    r.y *= maggradcolor;
+	    r.z *= maggradcolor;
 
-	    ri.gx += r[0]*md;
-	    ri.gy += r[1]*md;
-	    ri.gz += r[2]*md;
+	    ri.gx += r.x*md;
+	    ri.gy += r.y*md;
+	    ri.gz += r.z*md;
 	    ri.lc += md*laplWpoly6(magr);
 
-	    rj.gx += -r[0]*md;
-	    rj.gy += -r[1]*md;
-	    rj.gz += -r[2]*md;
+	    rj.gx += -r.x*md;
+	    rj.gy += -r.y*md;
+	    rj.gz += -r.z*md;
 	    rj.lc += md*laplWpoly6(magr);
 	  }
 	}
@@ -475,16 +465,18 @@ void finalizeOtherForces()
       plists[i][j].fz += a_gravity[2]*plists[i][j].rho;
 
       // surface tension
-      float gradcolor[3] = {plists[i][j].gx,
-			    plists[i][j].gy,
-			    plists[i][j].gz};
-      vecNormalize(gradcolor, gradcolor);
+      float3 gradcolor = make_float3(plists[i][j].gx,
+				     plists[i][j].gy,
+				     plists[i][j].gz);
+      if (length(gradcolor) > 0.0f) {
+	gradcolor = normalize(gradcolor);
+      }
 
       float tmp = -surfTension*plists[i][j].lc;
 
-      plists[i][j].fx += tmp*gradcolor[0];
-      plists[i][j].fy += tmp*gradcolor[1];
-      plists[i][j].fz += tmp*gradcolor[2];  
+      plists[i][j].fx += tmp*gradcolor.x;
+      plists[i][j].fy += tmp*gradcolor.y;
+      plists[i][j].fz += tmp*gradcolor.z;  
     }
   }
 }
