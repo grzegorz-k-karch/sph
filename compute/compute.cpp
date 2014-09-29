@@ -10,6 +10,8 @@
 
 #include "compute.h"
 
+
+#define REMOVESTRUCT 0
 #define PCISPH 0
 
 #if PCISPH
@@ -25,7 +27,7 @@ float soundSpeed = 1.0f;
 float m = 0.00020543f;
 float rho0 = 600.0f;
 float dynVisc = 0.2f;
-float a_gravity[3] = {0.0f, -10.0f, 0.0f};
+float3 a_gravity;
 float timestep = 0.0025f;
 float tankSize = 0.4154f;//0.2154f;
 float surfTension = 0.0189f;//378f;//0.0728f;
@@ -41,6 +43,14 @@ const int maxNumIter = 10;
 
 int cellOffsets[14];
 
+#if REMOVESTRUCT
+vector<vector<float4>>    X; // Position
+vector<vector<float4>>    U; // Velocity
+vector<vector<unsigned>> Id; // Index
+vector<vector<float>>   Rho; // Denity
+vector<vector<float4>>    F; // Force
+vector<vector<float4>>    K; // surface tension
+#else
 typedef struct {
 
   // position
@@ -74,14 +84,7 @@ typedef struct {
 } particle_t;
 
 std::vector<std::vector<particle_t> > plists;
-
-vector<vector<float4>>    X; // Position
-vector<vector<float4>>    U; // Velocity
-vector<vector<unsigned>> Id; // Index
-vector<vector<float>>   Rho; // Denity
-vector<vector<float4>>    F; // Force
-vector<vector<float4>>    K; // surface tension
-
+#endif//REMOVESTRUCT
 // kernel coefficients
 float laplWviscosityCoeff;
 float gradWspikyCoeff;
@@ -178,6 +181,8 @@ void initParticles(std::vector<float4>& particles,
   h6 = h2*h2*h2;
   h9 = h*h2*h6;
 
+  a_gravity = make_float3(0.0f, -10.0f, 0.0f);
+
   laplWviscosityCoeff = 45.0f/(M_PI*h6);
   gradWspikyCoeff = -45.0f/(M_PI*h6);
   Wpoly6Coeff = 315.0f/(64.0f*M_PI*h9);
@@ -223,6 +228,52 @@ void initParticles(std::vector<float4>& particles,
 #endif
 }
 
+#if REMOVESTRUCT
+void assignParticlesToCells(std::vector<float4>& particles, 
+			    std::vector<float4>& velocities)
+{
+  const float cellSize = h*1.01f;
+  const int gridSize = std::ceil(tankSize/cellSize);
+  const int numCells = gridSize*gridSize*gridSize;
+
+  X.resize(numCells);
+  U.resize(numCells);
+  Id.resize(numCells);
+  Rho.resize(numCells);
+  F.resize(numCells);
+  K.resize(numCells);
+
+  for (unsigned i = 0; i < numCells; i++) {
+    X[i].clear();
+    U[i].clear();
+    Id[i].clear();
+    Rho[i].clear();
+    F[i].clear();
+    K[i].clear();
+  }
+
+  const float4 zerof4 = make_float4(0.0);
+  const unsigned numParticles = particles.size();
+
+  for (unsigned i = 0; i < numParticles; i++) {
+
+    float4 pos = particles[i];
+    int cellCoords[3] = {int(pos.x/cellSize), 
+			 int(pos.y/cellSize), 
+			 int(pos.z/cellSize)};
+    int cellId = cellCoords[0] + 
+      cellCoords[1]*gridSize + 
+      cellCoords[2]*gridSize*gridSize;
+
+    X[cellId].push_back(pos);
+    U[cellId].push_back(velocities[i]);
+    Id[cellId].push_back(i);
+    Rho[cellId].push_back(0.0f);
+    F[cellId].push_back(zerof4);
+    K[cellId].push_back(zerof4);
+  }
+}
+#else
 void assignParticlesToCells(std::vector<float4>& particles, 
 			    std::vector<float4>& velocities)
 {
@@ -257,7 +308,62 @@ void assignParticlesToCells(std::vector<float4>& particles,
     plists[cellId].push_back(particle);
   }      
 }
+#endif//REMOVESTRUCT
 
+#if REMOVESTRUCT
+void computeDensity(int z0)
+{
+  // compute density for each particle-----------------------------------------
+  float own_rho = m*Wpoly6(0.0f);
+
+  const float cellSize = h*1.01f;
+  const int gridSize = std::ceil(tankSize/cellSize);
+  const int numCells = gridSize*gridSize*gridSize;
+  const int numCellsInSlab = gridSize*gridSize;
+
+#pragma omp parallel for 
+  for (int z = z0; z < gridSize; z+=2) {    
+    for (int s = 0; s < numCellsInSlab; s++) {
+
+      int cell = s + z*numCellsInSlab;
+      unsigned numParticlesInCell = X[cell].size();
+      for (unsigned i = 0; i < numParticlesInCell; i++) {
+
+	float densityi = 0.0f;
+
+	Rho[cell][i] += own_rho;
+
+	for (int k = 0; k < 14; k++) {
+
+	  int neighborCell = cell + cellOffsets[k];
+	  if (neighborCell >= numCells) {
+	    continue;
+	  }
+
+	  unsigned numParticlesInNeighborCell = X[neighborCell].size();
+	  for (unsigned j = 0; j < numParticlesInNeighborCell; j++) {
+
+	    if (k == 0 && Id[neighborCell][j] >= Id[cell][i]) {
+	      continue;
+	    }
+	    float4 r = X[cell][i] - X[neighborCell][j];
+	    float r2 = r.x*r.x+r.y*r.y+r.z*r.z;
+	    float magr = std::sqrt(r2);
+	    if (magr > h) {
+	      continue;
+	    }
+	    float rho = m*Wpoly6(magr);
+
+	    densityi += rho;
+	    Rho[neighborCell][j] += rho;
+	  }
+	}
+	Rho[cell][i] += densityi;
+      }
+    }    
+  }
+}
+#else
 void computeDensity(int z0)
 {
   // compute density for each particle-----------------------------------------
@@ -309,13 +415,72 @@ void computeDensity(int z0)
     }    
   }
 }
-
+#endif//REMOVESTRUCT
 void computeDensityComplete()
 {
   computeDensity(0);
   computeDensity(1);
 }
+#if REMOVESTRUCT
+void computePressureForces(int z0)
+{
+  const float cellSize = h*1.01f;
+  const int gridSize = std::ceil(tankSize/cellSize);
+  const int numCells = gridSize*gridSize*gridSize;
+  const int numCellsInSlab = gridSize*gridSize;
 
+  float cs = soundSpeed*soundSpeed;
+
+#pragma omp parallel for 
+  for (int z = z0; z < gridSize; z+=2) {    
+    for (int s = 0; s < numCellsInSlab; s++) {      
+
+      int cell = s + z*numCellsInSlab;
+      unsigned numParticlesInCell = X[cell].size();
+      for (unsigned i = 0; i < numParticlesInCell; i++) {
+	
+	float rho_i = Rho[cell][i];
+	float pi = cs*(rho_i-rho0);
+
+	for (int k = 0; k < 14; k++) {
+
+	  int neighborCell = cell + cellOffsets[k];
+	  if (neighborCell >= numCells) {
+	    continue;
+	  }
+
+	  unsigned numParticlesInNeighborCell = X[neighborCell].size();
+	  for (unsigned j = 0; j < numParticlesInNeighborCell; j++) {
+
+	    if (k == 0 && Id[neighborCell][j] >= Id[cell][i]) {
+	      continue;
+	    }
+
+	    float rho_j = Rho[neighborCell][j];
+	    float pj = cs*(rho_j-rho0);
+      	    float3 r = make_float3(X[cell][i] - X[neighborCell][j]);
+	    float magr = length(r);
+	    if (magr > h) {
+	      continue;
+	    }
+	    // pressure
+	    float mfp = -m*(pi+pj)/(rho_i+rho_j)*gradWspiky(magr);
+	    // FROM FLUIDS: (does not work well)
+	    // float mfp = -m*(pi+pj)/(densities[i]*densities[j])*gradWspiky(magr);
+	    // float mfp = -m*m*(pi/(ri.rho*ri.rho)+pj/(rj.rho*rj.rho))*gradWspiky(magr);
+
+	    if (magr > 0.0f) {
+	      r = normalize(r);
+	    }
+	    F[cell][i] += make_float4(mfp*r);
+	    F[neighborCell][j] += make_float4(-mfp*r);
+	  }
+	}
+      }
+    }
+  }
+}
+#else
 void computePressureForces(int z0)
 {
   const float cellSize = h*1.01f;
@@ -374,13 +539,80 @@ void computePressureForces(int z0)
     }
   }
 }
-
+#endif//REMOVESTRUCT
 void computePressureForcesComplete()
 {
   computePressureForces(0);
   computePressureForces(1);
 }
+#if REMOVESTRUCT
+void computeOtherForces(int z0)
+{
+  const float cellSize = h*1.01f;
+  const int gridSize = std::ceil(tankSize/cellSize);
+  const int numCells = gridSize*gridSize*gridSize;
+  const int numCellsInSlab = gridSize*gridSize;
 
+#pragma omp parallel for 
+  for (int z = z0; z < gridSize; z+=2) {    
+    for (int s = 0; s < numCellsInSlab; s++) {      
+
+      int cell = s + z*numCellsInSlab;
+      unsigned numParticlesInCell = X[cell].size();
+      for (unsigned i = 0; i < numParticlesInCell; i++) {
+	
+	float rho_i = Rho[cell][i];
+
+	for (int k = 0; k < 14; k++) {
+
+	  int neighborCell = cell + cellOffsets[k];
+	  if (neighborCell >= numCells) {
+	    continue;
+	  }
+
+	  unsigned numParticlesInNeighborCell = X[neighborCell].size();
+	  for (unsigned j = 0; j < numParticlesInNeighborCell; j++) {
+
+	    if (k == 0 && Id[neighborCell][j] >= Id[cell][i]) {
+	      continue;
+	    }
+
+	    float rho_j = Rho[neighborCell][j];
+      	    float3 r = make_float3(X[cell][i] - X[neighborCell][j]);
+	    float magr = length(r);
+	    if (magr > h) {
+	      continue;
+	    }
+	    if (magr > 0.0f) {
+	      r = normalize(r);
+	    }
+
+	    // viscosity
+	    float tmp = dynVisc*m*laplWviscosity(magr)*2.0f/(rho_i+rho_j);
+	    float3 vdiff = make_float3(U[neighborCell][j] - U[cell][i]);
+
+	    F[cell][i] += make_float4(vdiff*tmp);
+	    F[neighborCell][j] += make_float4(vdiff*(-tmp));
+
+	    // surface tension
+	    float md = m*2.0f/(rho_i+rho_j);
+	    float maggradcolor = gradWpoly6(magr);
+
+	    r *= maggradcolor;
+	    float4 st = make_float4(r.x, r.y, r.z, laplWpoly6(magr));
+
+	    K[cell][i] += st*md;
+	    st.x = -st.x;
+	    st.y = -st.y;
+	    st.z = -st.z;
+	    K[neighborCell][j] += st*md;
+	  }
+	}
+      }
+    }
+  }
+}
+#else
 void computeOtherForces(int z0)
 {
   const float cellSize = h*1.01f;
@@ -452,7 +684,29 @@ void computeOtherForces(int z0)
     }
   }
 }
+#endif//REMOVESTRUCT
+#if REMOVESTRUCT
+void finalizeOtherForces()
+{
+#pragma omp parallel for
+  for (unsigned i = 0; i < F.size(); i++) {
+    for (unsigned j = 0; j < F[i].size(); j++) {
 
+      // gravity
+      F[i][j] += make_float4(a_gravity*Rho[i][j]);
+
+      // surface tension
+      float3 gradcolor = make_float3(K[i][j]);
+      if (length(gradcolor) > 0.0f) {
+	gradcolor = normalize(gradcolor);
+      }
+
+      float tmp = -surfTension*K[i][j].w;
+      F[i][j] += make_float4(tmp*gradcolor);
+    }
+  }
+}
+#else
 void finalizeOtherForces()
 {
 #pragma omp parallel for
@@ -460,9 +714,9 @@ void finalizeOtherForces()
     for (unsigned j = 0; j < plists[i].size(); j++) {
 
       // gravity
-      plists[i][j].fx += a_gravity[0]*plists[i][j].rho;
-      plists[i][j].fy += a_gravity[1]*plists[i][j].rho;
-      plists[i][j].fz += a_gravity[2]*plists[i][j].rho;
+      plists[i][j].fx += a_gravity.x*plists[i][j].rho;
+      plists[i][j].fy += a_gravity.y*plists[i][j].rho;
+      plists[i][j].fz += a_gravity.z*plists[i][j].rho;
 
       // surface tension
       float3 gradcolor = make_float3(plists[i][j].gx,
@@ -480,14 +734,30 @@ void finalizeOtherForces()
     }
   }
 }
-
+#endif
 void computeOtherForcesComplete()
 {
   computeOtherForces(0);
   computeOtherForces(1);
   finalizeOtherForces();
 }
+#if REMOVESTRUCT
+void integrate(std::vector<float4>& particles, 
+	       std::vector<float4>& velocities)
+{
+#pragma omp parallel for
+  for (unsigned i = 0; i < F.size(); i++) {
+    for (unsigned j = 0; j < F[i].size(); j++) {
 
+      int idx = Id[i][j];
+      float sc = timestep/Rho[i][j];
+
+      velocities[idx] += F[i][j]*sc;
+      particles[idx] += velocities[idx]*timestep;
+    }
+  }
+}
+#else
 void integrate(std::vector<float4>& particles, 
 	       std::vector<float4>& velocities)
 {
@@ -512,7 +782,7 @@ void integrate(std::vector<float4>& particles,
     }
   }
 }
-
+#endif//REMOVESTRUCT
 void checkBoundaries(std::vector<float4>& particles, 
 		     std::vector<float4>& velocities)
 {
